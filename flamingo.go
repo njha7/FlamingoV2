@@ -77,7 +77,7 @@ func commandListener(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if strings.HasPrefix(m.Message.Content, commandPrefix) {
 		//This capacity is a magic number,
 		//it's the average length of most command names
-		commandBuilder := &strings.Builder{}
+		var commandBuilder strings.Builder
 		for _, v := range m.Message.Content {
 			if v == '\u0020' {
 				break
