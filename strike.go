@@ -41,6 +41,11 @@ func NewStrikeClient(discordSession *discordgo.Session, dynamoClient *dynamodb.D
 }
 
 func (strikeClient *StrikeClient) StrikeUser(guildID, channelID, userID string) {
+	if userID == "132651817409445888" {
+		// tdorn is immune
+		strikeClient.DiscordSession.ChannelMessageSend(channelID, "Nice try bucko, tdorn is immune.")
+		return;
+	}
 	result, err := strikeClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
 		TableName:                 aws.String(strikeTableName),
 		Key:                       buildKey(guildID, userID),
