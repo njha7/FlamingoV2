@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	commandPrefix string = "!"
+	commandPrefix string = "~"
 	bucket        string = "flamingo-bot"
 	region        string = "us-east-1"
 )
