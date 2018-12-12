@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	serviceName = "Strike"
-	tableName   = "FlamingoStrikes"
+	strikeServiceName = "Strike"
+	strikeTableName   = "FlamingoStrikes"
 )
 
 type StrikeClient struct {
@@ -35,14 +35,14 @@ func NewStrikeClient(discordSession *discordgo.Session, dynamoClient *dynamodb.D
 	return &StrikeClient{
 		DiscordSession:      discordSession,
 		DynamoClient:        dynamoClient,
-		StrikeServiceLogger: BuildServiceLogger(serviceName),
-		StrikeErrorLogger:   BuildServiceErrorLogger(serviceName),
+		StrikeServiceLogger: BuildServiceLogger(strikeServiceName),
+		StrikeErrorLogger:   BuildServiceErrorLogger(strikeServiceName),
 	}
 }
 
 func (strikeClient *StrikeClient) StrikeUser(guildID, channelID, userID string) {
 	result, err := strikeClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName:                 aws.String(tableName),
+		TableName:                 aws.String(strikeTableName),
 		Key:                       buildKey(guildID, userID),
 		UpdateExpression:          aws.String("ADD strikes :s"),
 		ExpressionAttributeValues: buildUpdateExpression(1),
@@ -64,7 +64,7 @@ func (strikeClient *StrikeClient) StrikeUser(guildID, channelID, userID string) 
 
 func (strikeClient *StrikeClient) GetStrikesForUser(guildID, channelID, userID string) {
 	result, err := strikeClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(strikeTableName),
 		Key:       buildKey(guildID, userID),
 	})
 	if err != nil {
@@ -84,7 +84,7 @@ func (strikeClient *StrikeClient) GetStrikesForUser(guildID, channelID, userID s
 
 func (strikeClient *StrikeClient) ClearStrikesForUser(guildID, channelID, userID string) {
 	_, err := strikeClient.DynamoClient.DeleteItem(&dynamodb.DeleteItemInput{
-		TableName: aws.String(tableName),
+		TableName: aws.String(strikeTableName),
 		Key:       buildKey(guildID, userID),
 	})
 	if err != nil {

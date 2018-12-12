@@ -27,6 +27,7 @@ var (
 	flamingoLogger                                *log.Logger
 	flamingoErrLogger                             *log.Logger
 	strikeService                                 *StrikeClient
+	pastaService                                  *PastaClient
 )
 
 func init() {
@@ -63,8 +64,10 @@ func main() {
 			WithCredentials(credentials.NewStaticCredentials(AWS_ACCESS_KEY, AWS_SECRET_KEY, "")).
 			WithMaxRetries(3),
 	))
+	ddb := dynamodb.New(awsSess, aws.NewConfig().WithRegion(region))
 	//Flamingo service Client construction
-	strikeService = NewStrikeClient(discord, dynamodb.New(awsSess, aws.NewConfig().WithRegion(region)))
+	strikeService = NewStrikeClient(discord, ddb)
+	pastaService = NewPastaClient(discord, ddb)
 	//Start Flamingo
 	err = discord.Open()
 	if err != nil {
@@ -121,6 +124,44 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				} else {
 					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
 				}
+			}
+		case commandPrefix + "pasta":
+			switch {
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta get"):
+				alias := strings.Replace(
+					strings.SplitAfterN(
+						m.Message.Content,
+						commandPrefix+"pasta get",
+						2)[1],
+					" ", "", -1)
+				if alias != "" {
+					go pastaService.GetPasta(m.GuildID, m.ChannelID, alias)
+				} else {
+					session.ChannelMessageSend(m.ChannelID, "Please specify a copypasta!")
+				}
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta save"):
+				aliasAndPasta := strings.SplitAfterN(
+					m.Message.Content,
+					commandPrefix+"pasta save",
+					2)[1]
+				aliasAndPasta = strings.TrimSpace(aliasAndPasta)
+				var aliasBuilder strings.Builder
+				for _, v := range aliasAndPasta {
+					if v == '\u0020' {
+						break
+					}
+					aliasBuilder.WriteRune(v)
+				}
+				alias := aliasBuilder.String()
+				pasta := strings.SplitAfterN(
+					aliasAndPasta,
+					alias,
+					2)[1]
+				if alias == "" || pasta == "" {
+					session.ChannelMessageSend(m.ChannelID, "Please specify an alias or copypasta!")
+					return
+				}
+				go pastaService.SavePasta(m.GuildID, m.ChannelID, m.Author.ID, alias, pasta)
 			}
 		}
 	}
