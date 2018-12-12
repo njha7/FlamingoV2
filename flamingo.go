@@ -2,28 +2,34 @@ package main
 
 import (
 	"flag"
-	"strings"
-	"os"
 	"log"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/bwmarrin/discordgo"
 )
 
-
 const (
-	commandPrefix string = "!" 
-	bucket string = "flamingo-bot"
+	commandPrefix string = "!"
+	bucket        string = "flamingo-bot"
+	region        string = "us-east-1"
 )
 
 var (
 	DISCORD_TOKEN, AWS_ACCESS_KEY, AWS_SECRET_KEY string
-	local bool
-	flamingoLogger *log.Logger
-	flamingoErrLogger *log.Logger
+	local                                         bool
+	flamingoLogger                                *log.Logger
+	flamingoErrLogger                             *log.Logger
+	strikeService                                 *StrikeClient
 )
 
-func init()  {
+func init() {
 	flamingoLogger = BuildServiceLogger("Flamingo")
 	flamingoErrLogger = BuildServiceErrorLogger("Flamingo")
 	//Dumb and lazy hack
@@ -50,6 +56,16 @@ func main() {
 		flamingoErrLogger.Println("Error creating Discord session: ", err)
 		return
 	}
+	//Initialize services before starting Flamingo
+	//AWS service client construction
+	awsSess := session.Must(session.NewSession(
+		aws.NewConfig().
+			WithCredentials(credentials.NewStaticCredentials(AWS_ACCESS_KEY, AWS_SECRET_KEY, "")).
+			WithMaxRetries(3),
+	))
+	//Flamingo service Client construction
+	strikeService = NewStrikeClient(discord, dynamodb.New(awsSess, aws.NewConfig().WithRegion(region)))
+	//Start Flamingo
 	err = discord.Open()
 	if err != nil {
 		flamingoErrLogger.Println("Error opening Discord session: ", err)
@@ -57,7 +73,7 @@ func main() {
 	}
 	flamingoLogger.Println("Authenticated")
 	discord.AddHandler(commandListener)
-	
+
 	// Wait here until CTRL-C or other term signal is received.
 	flamingoLogger.Println("Flamingo is now running.  Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
@@ -68,7 +84,7 @@ func main() {
 	discord.Close()
 }
 
-func commandListener(s *discordgo.Session, m *discordgo.MessageCreate) {
+func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 	//Ignore bots
 	if m.Author.Bot {
 		return
@@ -83,6 +99,29 @@ func commandListener(s *discordgo.Session, m *discordgo.MessageCreate) {
 				break
 			}
 			commandBuilder.WriteRune(v)
+		}
+		switch commandBuilder.String() {
+		case commandPrefix + "strike":
+			switch {
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"strike get"):
+				if len(m.Mentions) > 0 {
+					go strikeService.GetStrikesForUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
+				} else {
+					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
+				}
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"strike clear"):
+				if len(m.Mentions) > 0 {
+					go strikeService.ClearStrikesForUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
+				} else {
+					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
+				}
+			default:
+				if len(m.Mentions) > 0 {
+					go strikeService.StrikeUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
+				} else {
+					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
+				}
+			}
 		}
 	}
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"strconv"
+
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/bwmarrin/discordgo"
@@ -10,53 +12,103 @@ import (
 
 const (
 	serviceName = "Strike"
-	tableName = "FlamingoStrikes"
+	tableName   = "FlamingoStrikes"
 )
 
 type StrikeClient struct {
-	DiscordSession *discordgo.Session
-	DynamoClient *dynamodb.DynamoDB
+	DiscordSession      *discordgo.Session
+	DynamoClient        *dynamodb.DynamoDB
 	StrikeServiceLogger *log.Logger
-	StrikeErrorLogger *log.Logger 
+	StrikeErrorLogger   *log.Logger
 }
 
 type Strike struct {
-	ID string `dynamodbav:guild!user`
-	Strikes int `dynamodbav:strikes`
+	ID      string `dynamodbav:"guild!user"`
+	Strikes int    `dynamodbav:"strikes"`
 }
 
-func (strikeClient *StrikeClient) New(discordSession *discordgo.Session, dynamoClient *dynamodb.DynamoDB) *StrikeClient {
+type StrikeKey struct {
+	ID string `dynamodbav:"guild!user"`
+}
+
+func NewStrikeClient(discordSession *discordgo.Session, dynamoClient *dynamodb.DynamoDB) *StrikeClient {
 	return &StrikeClient{
-		DiscordSession: discordSession,
-		DynamoClient: dynamoClient,
+		DiscordSession:      discordSession,
+		DynamoClient:        dynamoClient,
 		StrikeServiceLogger: BuildServiceLogger(serviceName),
-		StrikeErrorLogger: BuildServiceErrorLogger(serviceName),
+		StrikeErrorLogger:   BuildServiceErrorLogger(serviceName),
 	}
 }
 
-func (strikeClient *StrikeClient) StrikeUser(guildId, userId string) error {
-	_, err := strikeClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName: *tableName,
-		Key: buildKey(guildId, userId),
-		UpdateExpression: "ADD strikes :s",
+func (strikeClient *StrikeClient) StrikeUser(guildID, channelID, userID string) {
+	result, err := strikeClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:                 aws.String(tableName),
+		Key:                       buildKey(guildID, userID),
+		UpdateExpression:          aws.String("ADD strikes :s"),
 		ExpressionAttributeValues: buildUpdateExpression(1),
-		ReturnValues: "UPDATED_NEW",
+		ReturnValues:              aws.String("UPDATED_NEW"),
 	})
-	return err
+	if err != nil {
+		strikeClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
+		strikeClient.StrikeErrorLogger.Println(err)
+		return
+	}
+	strikeCount, ok := result.Attributes["strikes"]
+	if ok {
+		strikeClient.DiscordSession.ChannelMessageSend(channelID,
+			"<@"+userID+"> has "+*strikeCount.N+" strikes.")
+	} else {
+		strikeClient.StrikeErrorLogger.Printf("strikes not found in %v\n", strikeCount)
+	}
 }
 
-func buildKey(guildId, userId string) map[string]*dynamodb.AttributeValue {
-	id := &Strike{
-		ID: guildId + "!" + userId,
+func (strikeClient *StrikeClient) GetStrikesForUser(guildID, channelID, userID string) {
+	result, err := strikeClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(tableName),
+		Key:       buildKey(guildID, userID),
+	})
+	if err != nil {
+		strikeClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
+		strikeClient.StrikeErrorLogger.Println(err)
+		return
+	}
+	strikeCount, ok := result.Item["strikes"]
+	if ok {
+		strikeClient.DiscordSession.ChannelMessageSend(channelID,
+			"<@"+userID+"> has "+*strikeCount.N+" strikes.")
+	} else {
+		strikeClient.DiscordSession.ChannelMessageSend(channelID,
+			"<@"+userID+"> has no strikes.")
+	}
+}
+
+func (strikeClient *StrikeClient) ClearStrikesForUser(guildID, channelID, userID string) {
+	_, err := strikeClient.DynamoClient.DeleteItem(&dynamodb.DeleteItemInput{
+		TableName: aws.String(tableName),
+		Key:       buildKey(guildID, userID),
+	})
+	if err != nil {
+		strikeClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
+		strikeClient.StrikeErrorLogger.Println(err)
+		return
+	}
+	strikeClient.DiscordSession.ChannelMessageSend(channelID,
+		"<@"+userID+"> has no strikes.")
+}
+
+func buildKey(guildID, userID string) map[string]*dynamodb.AttributeValue {
+	id := StrikeKey{
+		ID: guildID + "!" + userID,
 	}
 	//err != nil will get caught in the request
-	key, err := dynamodbattribute.MarshalMap(id)
+	key, _ := dynamodbattribute.MarshalMap(id)
 	return key
 }
 
 func buildUpdateExpression(update int) map[string]*dynamodb.AttributeValue {
-	var av dynamodb.Number = strconv.Itoa(update)
 	return map[string]*dynamodb.AttributeValue{
-		":s": &av,
+		":s": &dynamodb.AttributeValue{
+			N: aws.String(strconv.Itoa(update)),
+		},
 	}
 }
