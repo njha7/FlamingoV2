@@ -109,12 +109,13 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				} else {
 					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
 				}
-			case strings.HasPrefix(m.Message.Content, commandPrefix+"strike clear"):
-				if len(m.Mentions) > 0 {
-					go strikeService.ClearStrikesForUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
-				} else {
-					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
-				}
+			//Unsure how I feel about this command. Disabling for now
+			// case strings.HasPrefix(m.Message.Content, commandPrefix+"strike clear"):
+			// 	if len(m.Mentions) > 0 {
+			// 		go strikeService.ClearStrikesForUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
+			// 	} else {
+			// 		session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
+			// 	}
 			default:
 				if len(m.Mentions) > 0 {
 					go strikeService.StrikeUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
