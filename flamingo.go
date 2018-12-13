@@ -166,6 +166,8 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta list"):
 				go pastaService.ListPasta(m.GuildID, m.ChannelID)
 			}
+		case commandPrefix + "help":
+			session.ChannelMessageSend(m.ChannelID, "More info is available at https://github.com/njha7/FlamingoV2/blob/master/README.md")
 		}
 	}
 }
