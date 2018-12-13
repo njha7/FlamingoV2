@@ -163,6 +163,8 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 					return
 				}
 				go pastaService.SavePasta(m.GuildID, m.ChannelID, m.Author.ID, alias, pasta)
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta list"):
+				go pastaService.ListPasta(m.GuildID, m.ChannelID)
 			}
 		}
 	}
