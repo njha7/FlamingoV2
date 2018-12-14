@@ -57,10 +57,9 @@ func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string
 	x := float64(image.Bounds().Size().X)
 	y := float64(image.Bounds().Size().Y)
 
-	ratio := x / y
 	reszieRatio := 128.0 / x
 	dx := uint(x * reszieRatio)
-	dy := uint(y * reszieRatio * ratio)
+	dy := uint(y * reszieRatio)
 
 	image = resize.Resize(dx, dy, image, resize.NearestNeighbor)
 
