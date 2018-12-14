@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -28,6 +29,7 @@ var (
 	flamingoErrLogger                             *log.Logger
 	strikeService                                 *StrikeClient
 	pastaService                                  *PastaClient
+	reactService                                  *ReactClient
 )
 
 func init() {
@@ -65,9 +67,12 @@ func main() {
 			WithMaxRetries(3),
 	))
 	ddb := dynamodb.New(awsSess, aws.NewConfig().WithRegion(region))
+	// Create S3 service client with a specific Region.
+	s3 := s3.New(awsSess, aws.NewConfig().WithRegion(region))
 	//Flamingo service Client construction
 	strikeService = NewStrikeClient(discord, ddb)
 	pastaService = NewPastaClient(discord, ddb)
+	reactService = NewReactClient(discord, ddb, s3)
 	//Start Flamingo
 	err = discord.Open()
 	if err != nil {
@@ -110,7 +115,7 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				if len(m.Mentions) > 0 {
 					go strikeService.GetStrikesForUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
 				} else {
-					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
+					session.ChannelMessageSend(m.ChannelID, "Please mention someone!")
 				}
 			//Unsure how I feel about this command. Disabling for now
 			// case strings.HasPrefix(m.Message.Content, commandPrefix+"strike clear"):
@@ -123,7 +128,7 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				if len(m.Mentions) > 0 {
 					go strikeService.StrikeUser(m.GuildID, m.ChannelID, m.Mentions[0].ID)
 				} else {
-					session.ChannelMessageSend(m.ChannelID, "Please mention a someone!")
+					session.ChannelMessageSend(m.ChannelID, "Please mention someone!")
 				}
 			}
 		case commandPrefix + "pasta":
@@ -168,6 +173,47 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 			}
 		case commandPrefix + "help":
 			session.ChannelMessageSend(m.ChannelID, "More info is available at https://github.com/njha7/FlamingoV2/blob/master/README.md")
+		case commandPrefix + "react":
+			switch {
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"react get"):
+				alias := strings.Replace(
+					strings.SplitAfterN(
+						m.Message.Content,
+						commandPrefix+"react get",
+						2)[1],
+					" ", "", -1)
+				if alias != "" {
+					go reactService.GetReaction(m.ChannelID, m.Author.ID, alias)
+				} else {
+					session.ChannelMessageSend(m.ChannelID, "Please specify a reaction!")
+				}
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"react delete"):
+				alias := strings.Replace(
+					strings.SplitAfterN(
+						m.Message.Content,
+						commandPrefix+"react delete",
+						2)[1],
+					" ", "", -1)
+				if alias != "" {
+					go reactService.DeleteReaction(m.ChannelID, m.Author.ID, alias)
+				} else {
+					session.ChannelMessageSend(m.ChannelID, "Please specify a reaction!")
+				}
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"react save"):
+				alias := strings.Replace(
+					strings.SplitAfterN(
+						m.Message.Content,
+						commandPrefix+"react save",
+						2)[1],
+					" ", "", -1)
+				if len(m.Attachments) > 0 && m.Attachments[0].Height != 0 && alias != "" {
+					go reactService.PutReaction(m.ChannelID, m.Author.ID, alias, m.Attachments[0].URL)
+				} else {
+					session.ChannelMessageSend(m.ChannelID, "Please specify an alias or attach an image!")
+				}
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta list"):
+				session.ChannelMessageSend(m.ChannelID, "Coming soon.")
+			}
 		}
 	}
 }
