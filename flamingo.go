@@ -169,7 +169,7 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				}
 				go pastaService.SavePasta(m.GuildID, m.ChannelID, m.Author.ID, alias, pasta)
 			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta list"):
-				go pastaService.ListPasta(m.GuildID, m.ChannelID)
+				go pastaService.ListPasta(m.GuildID, m.ChannelID, m.Author.ID)
 			}
 		case commandPrefix + "help":
 			session.ChannelMessageSend(m.ChannelID, "More info is available at https://github.com/njha7/FlamingoV2/blob/master/README.md")
