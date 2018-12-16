@@ -170,6 +170,29 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				go pastaService.SavePasta(m.GuildID, m.ChannelID, m.Author.ID, alias, pasta)
 			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta list"):
 				go pastaService.ListPasta(m.GuildID, m.ChannelID, m.Author.ID)
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta edit"):
+				aliasAndPasta := strings.SplitAfterN(
+					m.Message.Content,
+					commandPrefix+"pasta edit",
+					2)[1]
+				aliasAndPasta = strings.TrimSpace(aliasAndPasta)
+				var aliasBuilder strings.Builder
+				for _, v := range aliasAndPasta {
+					if v == '\u0020' {
+						break
+					}
+					aliasBuilder.WriteRune(v)
+				}
+				alias := aliasBuilder.String()
+				pasta := strings.SplitAfterN(
+					aliasAndPasta,
+					alias,
+					2)[1]
+				if alias == "" || pasta == "" {
+					session.ChannelMessageSend(m.ChannelID, "Please specify an alias or copypasta!")
+					return
+				}
+				go pastaService.EditPasta(m.GuildID, m.ChannelID, m.Author.ID, alias, pasta)
 			}
 		case commandPrefix + "help":
 			session.ChannelMessageSend(m.ChannelID, "More info is available at https://github.com/njha7/FlamingoV2/blob/master/README.md")
