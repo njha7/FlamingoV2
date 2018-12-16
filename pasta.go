@@ -88,7 +88,23 @@ func (pastaClient *PastaClient) SavePasta(guildID, channelID, owner, alias, past
 	pastaClient.DiscordSession.ChannelMessageSend(channelID, "Copypasta with alias "+alias+" saved.")
 }
 
-func (pastaClient *PastaClient) ListPasta(guildID, channelID string) {
+func (pastaClient *PastaClient) ListPasta(guildID, channelID, userID string) {
+	var guildName string
+	guild, err := pastaClient.DiscordSession.Guild(guildID)
+	if err != nil {
+		guildName = "An error occurred while retrieving server name."
+		pastaClient.PastaErrorLogger.Println(err)
+	} else {
+		guildName = guild.Name
+	}
+
+	dmChannel, err := pastaClient.DiscordSession.UserChannelCreate(userID)
+	if err != nil {
+		pastaClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Could not DM <@"+userID+">")
+		pastaClient.PastaErrorLogger.Println(err)
+		return
+	}
+
 	pastaList := &dynamodb.QueryInput{
 		TableName:              aws.String(pastaTableName),
 		KeyConditionExpression: aws.String("guild=:g"),
@@ -100,15 +116,31 @@ func (pastaClient *PastaClient) ListPasta(guildID, channelID string) {
 		Limit: aws.Int64(15),
 	}
 
-	result, err := pastaClient.DynamoClient.Query(pastaList)
+	err = pastaClient.DynamoClient.QueryPages(pastaList,
+		func(page *dynamodb.QueryOutput, lastPage bool) bool {
+			//List pastas in chat
+			guildPastaList := buildPastaPage(page)
+			pastaClient.DiscordSession.ChannelMessageSendEmbed(dmChannel.ID,
+				&discordgo.MessageEmbed{
+					Author: &discordgo.MessageEmbedAuthor{},
+					Thumbnail: &discordgo.MessageEmbedThumbnail{
+						URL: "https://cdn.discordapp.com/avatars/518879406509391878/ca293c592d560f09d958e85166938e88.png?size=256",
+					},
+					Color:       0x0000ff,
+					Description: "It's not like I like you or a-anything, b-b-baka.",
+					Fields:      guildPastaList,
+					Title:       "Copypastas in " + guildName,
+				})
+			if lastPage {
+				return false
+			}
+			return true
+		})
 	if err != nil {
-		pastaClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
+		pastaClient.DiscordSession.ChannelMessageSend(dmChannel.ID, "An error occured. Please try again later.")
 		pastaClient.PastaErrorLogger.Println(err)
 		return
 	}
-	//List pastas in chat
-	guildPastaList := buildPastaPage(result)
-	sendPastaPage(pastaClient.DiscordSession, channelID, guildPastaList)
 }
 
 func buildPastaKey(guildID, alias string) map[string]*dynamodb.AttributeValue {
@@ -133,7 +165,6 @@ func buildPasta(guildID, owner, alias, pasta string) map[string]*dynamodb.Attrib
 	return item
 }
 
-
 func buildPastaPage(pastas *dynamodb.QueryOutput) []*discordgo.MessageEmbedField {
 	//List pastas in chat
 	guildPastaList := make([]*discordgo.MessageEmbedField, 0, 15)
@@ -156,18 +187,4 @@ func buildPastaPage(pastas *dynamodb.QueryOutput) []*discordgo.MessageEmbedField
 		})
 	}
 	return guildPastaList[:len(guildPastaList)]
-}
-
-func sendPastaPage(discordSession *discordgo.Session, channelID string, pastas []*discordgo.MessageEmbedField) {
-	discordSession.ChannelMessageSendEmbed(channelID,
-		&discordgo.MessageEmbed{
-			Author: &discordgo.MessageEmbedAuthor{},
-			Thumbnail: &discordgo.MessageEmbedThumbnail{
-				URL: "https://cdn.discordapp.com/avatars/518879406509391878/ca293c592d560f09d958e85166938e88.png?size=256",
-			},
-			Color:       0x0000ff,
-			Description: "It's not like I like you or a-anything, b-b-baka.",
-			Fields:      pastas,
-			Title:       "A list of your copypastas",
-		})
 }
