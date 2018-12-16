@@ -34,12 +34,6 @@ type PastaKey struct {
 	Alias string `dynamodbav:"alias"`
 }
 
-type PastaPage struct {
-	Guild string `dynamodbav:"guild"`
-	Alias string `dynamodbav:"alias"`
-	Key   string `dynamodbav:"marker"`
-}
-
 func NewPastaClient(discordSession *discordgo.Session, dynamoClient *dynamodb.DynamoDB) *PastaClient {
 	return &PastaClient{
 		DiscordSession:     discordSession,
@@ -86,6 +80,48 @@ func (pastaClient *PastaClient) SavePasta(guildID, channelID, owner, alias, past
 		return
 	}
 	pastaClient.DiscordSession.ChannelMessageSend(channelID, "Copypasta with alias "+alias+" saved.")
+}
+
+func (pastaClient *PastaClient) EditPasta(guildID, channelID, requester, alias, pasta string) {
+	_, err := pastaClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:           aws.String(pastaTableName),
+		Key:                 buildPastaKey(guildID, alias),
+		ConditionExpression: aws.String("#o=:r"),
+		ExpressionAttributeNames: map[string]*string{
+			"#o": aws.String("owner"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":p": &dynamodb.AttributeValue{S: aws.String(pasta)},
+			":r": &dynamodb.AttributeValue{S: aws.String(requester)},
+		},
+		UpdateExpression: aws.String("SET pasta=:p"),
+	})
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			switch awsErr.Code() {
+			case dynamodb.ErrCodeConditionalCheckFailedException:
+				author, err := pastaClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
+					TableName:            aws.String(pastaTableName),
+					Key:                  buildPastaKey(guildID, alias),
+					ProjectionExpression: aws.String("#o"),
+					ExpressionAttributeNames: map[string]*string{
+						"#o": aws.String("owner"),
+					},
+				})
+				if err != nil {
+					pastaClient.PastaErrorLogger.Println(err)
+					pastaClient.DiscordSession.ChannelMessageSend(channelID, "Only the author can update this pasta.")
+				} else {
+					pastaClient.DiscordSession.ChannelMessageSend(channelID, "Only <@"+*author.Item["owner"].S+"> can update this pasta.")
+				}
+				return
+			}
+		}
+		pastaClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
+		pastaClient.PastaErrorLogger.Println(err)
+		return
+	}
+	pastaClient.DiscordSession.ChannelMessageSend(channelID, "Copypasta with alias "+alias+" updated.")
 }
 
 func (pastaClient *PastaClient) ListPasta(guildID, channelID, userID string) {
