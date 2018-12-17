@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -139,6 +140,55 @@ func (reactClient *ReactClient) DeleteReaction(channelID, userID, alias string) 
 		return
 	}
 	reactClient.DiscordSession.ChannelMessageSend(channelID, "Reaction with alias "+alias+" deleted.")
+}
+
+func (reactClient *ReactClient) ListReactions(channelID, userID string) {
+	dmChannel, err := reactClient.DiscordSession.UserChannelCreate(userID)
+	if err != nil {
+		reactClient.DiscordSession.ChannelMessageSend(channelID, "An error occurred. Could not DM <@"+userID+">.")
+		reactClient.ReactErrorLogger.Println(err)
+		return
+	}
+	err = reactClient.S3Client.ListObjectsV2Pages(
+		&s3.ListObjectsV2Input{
+			Bucket:  aws.String(reactBucket),
+			Prefix:  aws.String(buildReactionKey(userID, "")),
+			MaxKeys: aws.Int64(30),
+		},
+		func(page *s3.ListObjectsV2Output, lastPage bool) bool {
+			reactionList := make([]*discordgo.MessageEmbedField, 0, 30)
+			if *page.KeyCount < 1 {
+				reactionList = append(reactionList, &discordgo.MessageEmbedField{
+					Name:   "No reactions found.",
+					Value:  "):",
+					Inline: true,
+				})
+			}
+			for _, v := range page.Contents {
+				alias := strings.Split(*v.Key, "/")[1]
+				reactionList = append(reactionList, &discordgo.MessageEmbedField{
+					Name: alias,
+					//zero width space
+					Value:  "​",
+					Inline: true,
+				})
+			}
+			reactClient.DiscordSession.ChannelMessageSendEmbed(dmChannel.ID,
+				&discordgo.MessageEmbed{
+					Author: &discordgo.MessageEmbedAuthor{},
+					Thumbnail: &discordgo.MessageEmbedThumbnail{
+						URL: "https://cdn.discordapp.com/avatars/518879406509391878/ca293c592d560f09d958e85166938e88.png?size=256",
+					},
+					Color:       0x0000ff,
+					Description: "A list of your reactions",
+					Fields:      reactionList[:len(reactionList)],
+					Title:       "Your reactions",
+				})
+			if lastPage {
+				return false
+			}
+			return true
+		})
 }
 
 func buildReactionKey(userID, alias string) (key string) {

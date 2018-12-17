@@ -211,8 +211,8 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				} else {
 					session.ChannelMessageSend(m.ChannelID, "Please specify an alias or attach an image!")
 				}
-			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta list"):
-				session.ChannelMessageSend(m.ChannelID, "Coming soon.")
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"react list"):
+				go reactService.ListReactions(m.ChannelID, m.Author.ID)
 			}
 		}
 	}
