@@ -23,14 +23,31 @@ Retrieves a copypasta by alias and posts it. Alias can by any alphanumeric strin
 Usage: ```~pasta get $alias```
 
 #### save
-Saves a new a copypasta by alias and posts it. Alias can by any alphanumeric string with no whitespace.
+Saves a new a copypasta by alias. Alias can by any alphanumeric string with no whitespace.
 
 Usage: ```~pasta save $alias $copypasta_text```
 
+#### edit
+Updates an existing copypasta by alias. The copypasta must exist and by authored by the caller for this to succeed.
+
+Usage: ```~pasta save $alias $updated_copypasta_text```
+
 #### list
-Retrieves a paginated list of all the copypastas saved in the server. Repeated calls to list return the next page.
+Retrieves a paginated list of all the copypastas saved in the server and DMs them to the caller.
 
 Usage: ```~pasta list```
+
+### react
+
+#### get
+Retrieves a reaction image by alias and posts it. Alias can by any alphanumeric string with no whitespace.
+
+Usage: ```~react get $alias```
+
+#### save
+Saves a new a reaction by alias. Reactions are images uploaded to Discord. They are thumbnailed and saved for later reacall. Alias can by any alphanumeric string with no whitespace.
+
+Usage: ```~react save $alias```
 
 ## Deployment
 
