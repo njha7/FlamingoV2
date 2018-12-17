@@ -112,7 +112,12 @@ func (pastaClient *PastaClient) EditPasta(guildID, channelID, requester, alias, 
 					pastaClient.PastaErrorLogger.Println(err)
 					pastaClient.DiscordSession.ChannelMessageSend(channelID, "Only the author can update this pasta.")
 				} else {
-					pastaClient.DiscordSession.ChannelMessageSend(channelID, "Only <@"+*author.Item["owner"].S+"> can update this pasta.")
+					authorID, ok := author.Item["owner"]
+					if ok {
+						pastaClient.DiscordSession.ChannelMessageSend(channelID, "Only <@"+*authorID.S+"> can update this pasta.")
+					} else {
+						pastaClient.DiscordSession.ChannelMessageSend(channelID, "Cannot update copypasta that does not exist. Please save first and try again.")
+					}
 				}
 				return
 			}
