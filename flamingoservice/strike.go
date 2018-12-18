@@ -1,4 +1,4 @@
-package main
+package flamingoservice
 
 import (
 	"log"
@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/bwmarrin/discordgo"
+	"github.com/njha7/FlamingoV2/flamingolog"
 )
 
 const (
@@ -35,8 +36,8 @@ func NewStrikeClient(discordSession *discordgo.Session, dynamoClient *dynamodb.D
 	return &StrikeClient{
 		DiscordSession:      discordSession,
 		DynamoClient:        dynamoClient,
-		StrikeServiceLogger: BuildServiceLogger(strikeServiceName),
-		StrikeErrorLogger:   BuildServiceErrorLogger(strikeServiceName),
+		StrikeServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
+		StrikeErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}
 }
 

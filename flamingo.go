@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
+	"github.com/njha7/FlamingoV2/flamingolog"
+	"github.com/njha7/FlamingoV2/flamingoservice"
 )
 
 const (
@@ -27,14 +29,14 @@ var (
 	local                                         bool
 	flamingoLogger                                *log.Logger
 	flamingoErrLogger                             *log.Logger
-	strikeService                                 *StrikeClient
-	pastaService                                  *PastaClient
-	reactService                                  *ReactClient
+	strikeService                                 *flamingoservice.StrikeClient
+	pastaService                                  *flamingoservice.PastaClient
+	reactService                                  *flamingoservice.ReactClient
 )
 
 func init() {
-	flamingoLogger = BuildServiceLogger("Flamingo")
-	flamingoErrLogger = BuildServiceErrorLogger("Flamingo")
+	flamingoLogger = flamingolog.BuildServiceLogger("Flamingo")
+	flamingoErrLogger = flamingolog.BuildServiceErrorLogger("Flamingo")
 	//Dumb and lazy hack
 	flag.BoolVar(&local, "local", false, "Flag for running waimote in local test mode.")
 	flag.StringVar(&DISCORD_TOKEN, "t", "", "Discord bot token.")
@@ -70,9 +72,9 @@ func main() {
 	// Create S3 service client with a specific Region.
 	s3 := s3.New(awsSess, aws.NewConfig().WithRegion(region))
 	//Flamingo service Client construction
-	strikeService = NewStrikeClient(discord, ddb)
-	pastaService = NewPastaClient(discord, ddb)
-	reactService = NewReactClient(discord, ddb, s3)
+	strikeService = flamingoservice.NewStrikeClient(discord, ddb)
+	pastaService = flamingoservice.NewPastaClient(discord, ddb)
+	reactService = flamingoservice.NewReactClient(discord, ddb, s3)
 	//Start Flamingo
 	err = discord.Open()
 	if err != nil {

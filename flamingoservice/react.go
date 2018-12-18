@@ -1,4 +1,4 @@
-package main
+package flamingoservice
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
 	"github.com/nfnt/resize"
+	"github.com/njha7/FlamingoV2/flamingolog"
 )
 
 const (
@@ -33,8 +34,8 @@ func NewReactClient(discordSession *discordgo.Session, dynamoClient *dynamodb.Dy
 		DiscordSession:     discordSession,
 		DynamoClient:       dynamoClient,
 		S3Client:           s3Client,
-		ReactServiceLogger: BuildServiceLogger(strikeServiceName),
-		ReactErrorLogger:   BuildServiceErrorLogger(strikeServiceName),
+		ReactServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
+		ReactErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}
 }
 

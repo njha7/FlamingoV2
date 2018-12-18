@@ -1,4 +1,4 @@
-package main
+package flamingoservice
 
 import (
 	"log"
@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/bwmarrin/discordgo"
+	"github.com/njha7/FlamingoV2/flamingolog"
 )
 
 const (
@@ -38,8 +39,8 @@ func NewPastaClient(discordSession *discordgo.Session, dynamoClient *dynamodb.Dy
 	return &PastaClient{
 		DiscordSession:     discordSession,
 		DynamoClient:       dynamoClient,
-		PastaServiceLogger: BuildServiceLogger(pastaServiceName),
-		PastaErrorLogger:   BuildServiceErrorLogger(pastaServiceName),
+		PastaServiceLogger: flamingolog.BuildServiceLogger(pastaServiceName),
+		PastaErrorLogger:   flamingolog.BuildServiceErrorLogger(pastaServiceName),
 	}
 }
 
