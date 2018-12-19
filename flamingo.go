@@ -72,7 +72,7 @@ func main() {
 	//Flamingo service Client construction
 	strikeService = NewStrikeClient(discord, ddb)
 	pastaService = NewPastaClient(discord, ddb)
-	reactService = NewReactClient(discord, ddb, s3)
+	reactService = NewReactClient(discord, s3)
 	//Start Flamingo
 	err = discord.Open()
 	if err != nil {
@@ -234,8 +234,8 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				} else {
 					session.ChannelMessageSend(m.ChannelID, "Please specify an alias or attach an image!")
 				}
-			case strings.HasPrefix(m.Message.Content, commandPrefix+"pasta list"):
-				session.ChannelMessageSend(m.ChannelID, "Coming soon.")
+			case strings.HasPrefix(m.Message.Content, commandPrefix+"react list"):
+				go reactService.ListReactions(m.ChannelID, m.Author.ID)
 			}
 		}
 	}
