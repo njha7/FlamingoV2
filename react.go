@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
 	"github.com/nfnt/resize"
@@ -23,16 +22,14 @@ const (
 
 type ReactClient struct {
 	DiscordSession     *discordgo.Session
-	DynamoClient       *dynamodb.DynamoDB
 	S3Client           *s3.S3
 	ReactServiceLogger *log.Logger
 	ReactErrorLogger   *log.Logger
 }
 
-func NewReactClient(discordSession *discordgo.Session, dynamoClient *dynamodb.DynamoDB, s3Client *s3.S3) *ReactClient {
+func NewReactClient(discordSession *discordgo.Session, s3Client *s3.S3) *ReactClient {
 	return &ReactClient{
 		DiscordSession:     discordSession,
-		DynamoClient:       dynamoClient,
 		S3Client:           s3Client,
 		ReactServiceLogger: BuildServiceLogger(strikeServiceName),
 		ReactErrorLogger:   BuildServiceErrorLogger(strikeServiceName),
@@ -168,8 +165,7 @@ func (reactClient *ReactClient) ListReactions(channelID, userID string) {
 				alias := strings.Split(*v.Key, "/")[1]
 				reactionList = append(reactionList, &discordgo.MessageEmbedField{
 					Name: alias,
-					//zero width space
-					Value:  "​",
+					Value:  "https://s3.amazonaws.com/"+reactBucket+"/"+*v.Key,
 					Inline: true,
 				})
 			}

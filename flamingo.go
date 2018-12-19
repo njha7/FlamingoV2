@@ -72,7 +72,7 @@ func main() {
 	//Flamingo service Client construction
 	strikeService = NewStrikeClient(discord, ddb)
 	pastaService = NewPastaClient(discord, ddb)
-	reactService = NewReactClient(discord, ddb, s3)
+	reactService = NewReactClient(discord, s3)
 	//Start Flamingo
 	err = discord.Open()
 	if err != nil {
