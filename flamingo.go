@@ -67,7 +67,7 @@ func main() {
 	s3 := s3.New(awsSess, aws.NewConfig().WithRegion(REGION))
 	//Flamingo service Client construction
 	commandServices = []flamingoservice.FlamingoService{
-		flamingoservice.NewStrikeClient(discord, ddb),
+		flamingoservice.NewStrikeClient(ddb),
 		flamingoservice.NewPastaClient(ddb),
 		flamingoservice.NewReactClient(discord, s3),
 	}
