@@ -49,14 +49,19 @@ Saves a new a reaction by alias. Reactions are images uploaded to Discord. They 
 
 Usage: ```~react save $alias```
 
+#### list
+Retrieves a paginated list of all the reaction images saved and DMs them to the caller.
+
+Usage: ```~react list```
+
 ## Deployment
 
 ### Local
 ```bash
 go get -d -v ./...
 go install -v ./...
-$GOPATH/bin/FlamingoV2 -local=true -t="DISCORD TOKEN" -ak="AWS ACCESS KEY" -sk="AWS SECRET KEY"
+$GOPATH/bin/FlamingoV2 -local=true -t="DISCORD TOKEN" -ak="AWS ACCESS KEY" -sk="AWS SECRET KEY" -r="AWS Region (e.g. us-west-2)"
 ```
 
 ### AWS Fargate
-Follow the [AWS CD tutorial](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-cd-pipeline.html) and pass the environment variables ```DISCORD_TOKEN```, ```AWS_ACCESS_KEY```, ```AWS_SECRET_KEY``` to the appropriate values.
+Follow the [AWS CD tutorial](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-cd-pipeline.html) and pass the environment variables ```DISCORD_TOKEN```, ```AWS_ACCESS_KEY```, ```AWS_SECRET_KEY```, ```REGION``` to the appropriate values.
