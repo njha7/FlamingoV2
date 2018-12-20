@@ -47,12 +47,12 @@ func NewPastaClient(dynamoClient *dynamodb.DynamoDB) *PastaClient {
 	}
 }
 
-// IsCommand identifies a message as a potential command.
+// IsCommand identifies a message as a potential command
 func (pastaClient *PastaClient) IsCommand(message string) bool {
 	return strings.HasPrefix(message, "pasta")
 }
 
-// Handle parses a command message and performs the commanded action.
+// Handle parses a command message and performs the commanded action
 func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *discordgo.Message) {
 	//first word is always "pasta", safe to remove
 	args := strings.SplitN(message.Content, " ", 4)[1:]
@@ -248,31 +248,26 @@ func (pastaClient *PastaClient) Help(session *discordgo.Session, channelID strin
 				&discordgo.MessageEmbedField{
 					Name: "get",
 					Value: "Retrieves a copypasta by alias and posts it. Alias can by any alphanumeric string with no whitespace.\n" +
-						"```~pasta get $alias```",
-					Inline: true,
+						"Usage: ```~pasta get $alias```",
 				},
 				&discordgo.MessageEmbedField{
 					Name: "save",
 					Value: "Saves a new a copypasta by alias. Alias can by any alphanumeric string with no whitespace.\n" +
 						"Usage: ```~pasta save $alias $copypasta_text```",
-					Inline: true,
 				},
 				&discordgo.MessageEmbedField{
 					Name: "edit",
 					Value: "Updates an existing copypasta by alias. The copypasta must exist and by authored by the caller for this to succeed.\n" +
 						"Usage: ```~pasta save $alias $updated_copypasta_text```",
-					Inline: true,
 				},
 				&discordgo.MessageEmbedField{
 					Name: "list",
 					Value: "Retrieves a paginated list of all the copypastas saved in the server and DMs them to the caller.\n" +
 						"Usage: ```~pasta list```",
-					Inline: true,
 				},
 				&discordgo.MessageEmbedField{
-					Name:   "help",
-					Value:  "Shows this help message.",
-					Inline: true,
+					Name:  "help",
+					Value: "Shows this help message.",
 				},
 			},
 		})
@@ -305,9 +300,8 @@ func buildPastaPage(pastas *dynamodb.QueryOutput) []*discordgo.MessageEmbedField
 	guildPastaList := make([]*discordgo.MessageEmbedField, 0, 15)
 	if *pastas.Count < 1 {
 		guildPastaList = append(guildPastaList, &discordgo.MessageEmbedField{
-			Name:   "That's all folks!",
-			Value:  "You've either reached the end of the list or there are no copypastas.",
-			Inline: true,
+			Name:  "That's all folks!",
+			Value: "You've either reached the end of the list or there are no copypastas.",
 		})
 	}
 	for _, v := range pastas.Items {
@@ -316,9 +310,8 @@ func buildPastaPage(pastas *dynamodb.QueryOutput) []*discordgo.MessageEmbedField
 			preview = preview[:50]
 		}
 		guildPastaList = append(guildPastaList, &discordgo.MessageEmbedField{
-			Name:   *v["alias"].S,
-			Value:  "Preview: " + preview,
-			Inline: true,
+			Name:  *v["alias"].S,
+			Value: "Preview: " + preview,
 		})
 	}
 	return guildPastaList[:len(guildPastaList)]
