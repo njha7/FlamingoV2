@@ -9,12 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/bwmarrin/discordgo"
+	"github.com/njha7/FlamingoV2/assets"
 	"github.com/njha7/FlamingoV2/flamingolog"
 )
 
 const (
 	pastaServiceName = "Pasta"
-	pastaTableName   = "FlamingoPasta"
 )
 
 // PastaClient is responsible for handling "pasta" commands
@@ -54,19 +54,13 @@ func (pastaClient *PastaClient) IsCommand(message string) bool {
 
 // Handle parses a command message and performs the commanded action.
 func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *discordgo.Message) {
-	//first word is always "pasta", save to remove
+	//first word is always "pasta", safe to remove
 	args := strings.SplitN(message.Content, " ", 4)[1:]
-	//sub-command of pasta
 	if len(args) < 1 {
-		session.ChannelMessageSend(message.ChannelID, "Invalid pasta command. Valid commands are:\n"+
-			"get\n"+
-			"save\n"+
-			"edit\n"+
-			"list\n"+
-			"help\n"+
-			CommandPrefix+"help for more info")
+		pastaClient.Help(session, message.ChannelID)
 		return
 	}
+	//sub-commands of pasta
 	switch args[0] {
 	case "get":
 		if len(args) < 2 {
@@ -96,23 +90,16 @@ func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *disc
 	case "list":
 		pastaClient.ListPasta(session, message.GuildID, message.ChannelID, message.Author.ID)
 	case "help":
-		//TODO Useful help embed
+		pastaClient.Help(session, message.ChannelID)
 	default:
-		//I wanto to make this an embed too
-		session.ChannelMessageSend(message.ChannelID, "Invalid pasta command. Valid commands are:\n"+
-			"get\n"+
-			"save\n"+
-			"edit\n"+
-			"list\n"+
-			"help\n"+
-			CommandPrefix+"help for more info")
+		pastaClient.Help(session, message.ChannelID)
 	}
 }
 
 // GetPasta returns a guild pasta by alias
 func (pastaClient *PastaClient) GetPasta(guildID, alias string) (string, error) {
 	result, err := pastaClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(pastaTableName),
+		TableName: aws.String(assets.PastaTableName),
 		Key:       buildPastaKey(guildID, alias),
 	})
 	if err != nil {
@@ -129,7 +116,7 @@ func (pastaClient *PastaClient) GetPasta(guildID, alias string) (string, error) 
 // SavePasta saves a pasta, with a unique alias for a guild
 func (pastaClient *PastaClient) SavePasta(guildID, owner, alias, pasta string) (bool, error) {
 	_, err := pastaClient.DynamoClient.PutItem(&dynamodb.PutItemInput{
-		TableName:           aws.String(pastaTableName),
+		TableName:           aws.String(assets.PastaTableName),
 		Item:                buildPasta(guildID, owner, alias, pasta),
 		ConditionExpression: aws.String("attribute_not_exists(guild) and attribute_not_exists(alias)"),
 	})
@@ -149,7 +136,7 @@ func (pastaClient *PastaClient) SavePasta(guildID, owner, alias, pasta string) (
 // EditPasta updates an existing pasta, provided the requester is the author of said pasta
 func (pastaClient *PastaClient) EditPasta(guildID, channelID, requester, alias, pasta string) (string, error) {
 	_, err := pastaClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName:           aws.String(pastaTableName),
+		TableName:           aws.String(assets.PastaTableName),
 		Key:                 buildPastaKey(guildID, alias),
 		ConditionExpression: aws.String("#o=:r"),
 		ExpressionAttributeNames: map[string]*string{
@@ -166,7 +153,7 @@ func (pastaClient *PastaClient) EditPasta(guildID, channelID, requester, alias, 
 			switch awsErr.Code() {
 			case dynamodb.ErrCodeConditionalCheckFailedException:
 				author, err := pastaClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
-					TableName:            aws.String(pastaTableName),
+					TableName:            aws.String(assets.PastaTableName),
 					Key:                  buildPastaKey(guildID, alias),
 					ProjectionExpression: aws.String("#o"),
 					ExpressionAttributeNames: map[string]*string{
@@ -209,7 +196,7 @@ func (pastaClient *PastaClient) ListPasta(session *discordgo.Session, guildID, c
 	}
 
 	pastaList := &dynamodb.QueryInput{
-		TableName:              aws.String(pastaTableName),
+		TableName:              aws.String(assets.PastaTableName),
 		KeyConditionExpression: aws.String("guild=:g"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":g": &dynamodb.AttributeValue{
@@ -227,7 +214,7 @@ func (pastaClient *PastaClient) ListPasta(session *discordgo.Session, guildID, c
 				&discordgo.MessageEmbed{
 					Author: &discordgo.MessageEmbedAuthor{},
 					Thumbnail: &discordgo.MessageEmbedThumbnail{
-						URL: "https://cdn.discordapp.com/avatars/518879406509391878/ca293c592d560f09d958e85166938e88.png?size=256",
+						URL: assets.AvatarURL,
 					},
 					Color:       0x0000ff,
 					Description: "It's not like I like you or a-anything, b-b-baka.",
@@ -244,6 +231,51 @@ func (pastaClient *PastaClient) ListPasta(session *discordgo.Session, guildID, c
 		pastaClient.PastaErrorLogger.Println(err)
 		return
 	}
+}
+
+// Help provides assistance with the pasta command by sending a help dialogue
+func (pastaClient *PastaClient) Help(session *discordgo.Session, channelID string) {
+	session.ChannelMessageSendEmbed(channelID,
+		&discordgo.MessageEmbed{
+			Author: &discordgo.MessageEmbedAuthor{},
+			Thumbnail: &discordgo.MessageEmbedThumbnail{
+				URL: assets.AvatarURL,
+			},
+			Color:       0xff0000,
+			Title:       "You need help!",
+			Description: "The commands for pasta are:",
+			Fields: []*discordgo.MessageEmbedField{
+				&discordgo.MessageEmbedField{
+					Name: "get",
+					Value: "Retrieves a copypasta by alias and posts it. Alias can by any alphanumeric string with no whitespace.\n" +
+						"```~pasta get $alias```",
+					Inline: true,
+				},
+				&discordgo.MessageEmbedField{
+					Name: "save",
+					Value: "Saves a new a copypasta by alias. Alias can by any alphanumeric string with no whitespace.\n" +
+						"Usage: ```~pasta save $alias $copypasta_text```",
+					Inline: true,
+				},
+				&discordgo.MessageEmbedField{
+					Name: "edit",
+					Value: "Updates an existing copypasta by alias. The copypasta must exist and by authored by the caller for this to succeed.\n" +
+						"Usage: ```~pasta save $alias $updated_copypasta_text```",
+					Inline: true,
+				},
+				&discordgo.MessageEmbedField{
+					Name: "list",
+					Value: "Retrieves a paginated list of all the copypastas saved in the server and DMs them to the caller.\n" +
+						"Usage: ```~pasta list```",
+					Inline: true,
+				},
+				&discordgo.MessageEmbedField{
+					Name:   "help",
+					Value:  "Shows this help message.",
+					Inline: true,
+				},
+			},
+		})
 }
 
 func buildPastaKey(guildID, alias string) map[string]*dynamodb.AttributeValue {
