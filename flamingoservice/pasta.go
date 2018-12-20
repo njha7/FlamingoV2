@@ -2,6 +2,7 @@ package flamingoservice
 
 import (
 	"log"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -16,13 +17,14 @@ const (
 	pastaTableName   = "FlamingoPasta"
 )
 
+// PastaClient is responsible for handling "pasta" commands
 type PastaClient struct {
-	DiscordSession     *discordgo.Session
 	DynamoClient       *dynamodb.DynamoDB
 	PastaServiceLogger *log.Logger
 	PastaErrorLogger   *log.Logger
 }
 
+// Pasta represents the schema of a pasta stored in DDB
 type Pasta struct {
 	Guild string `dynamodbav:"guild"`
 	Alias string `dynamodbav:"alias"`
@@ -30,67 +32,122 @@ type Pasta struct {
 	Pasta string `dynamodbav:"pasta"`
 }
 
+// PastaKey is a convenience struct for marshaling Go types into a key for DDB requests for a given pasta
 type PastaKey struct {
 	Guild string `dynamodbav:"guild"`
 	Alias string `dynamodbav:"alias"`
 }
 
-func NewPastaClient(discordSession *discordgo.Session, dynamoClient *dynamodb.DynamoDB) *PastaClient {
+// NewPastaClient constructs a PastaClient
+func NewPastaClient(dynamoClient *dynamodb.DynamoDB) *PastaClient {
 	return &PastaClient{
-		DiscordSession:     discordSession,
 		DynamoClient:       dynamoClient,
 		PastaServiceLogger: flamingolog.BuildServiceLogger(pastaServiceName),
 		PastaErrorLogger:   flamingolog.BuildServiceErrorLogger(pastaServiceName),
 	}
 }
 
+// IsCommand identifies a message as a potential command.
 func (pastaClient *PastaClient) IsCommand(message string) bool {
-	return false
-}
-func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *discordgo.Message) {
-	return
+	return strings.HasPrefix(message, "pasta")
 }
 
-func (pastaClient *PastaClient) GetPasta(guildID, channelID, alias string) {
+// Handle parses a command message and performs the commanded action.
+func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *discordgo.Message) {
+	//first word is always "pasta", save to remove
+	args := strings.SplitN(message.Content, " ", 4)[1:]
+	//sub-command of pasta
+	if len(args) < 1 {
+		session.ChannelMessageSend(message.ChannelID, "Invalid pasta command. Valid commands are:\n"+
+			"get\n"+
+			"save\n"+
+			"edit\n"+
+			"list\n"+
+			"help\n"+
+			CommandPrefix+"help for more info")
+		return
+	}
+	switch args[0] {
+	case "get":
+		if len(args) < 2 {
+			session.ChannelMessageSend(message.ChannelID, "Please specify a copypasta to get!")
+			return
+		}
+		pasta, err := pastaClient.GetPasta(message.GuildID, args[1])
+		ParseServiceResponse(session, message.ChannelID, pasta, err)
+	case "save":
+		if len(args) < 3 {
+			session.ChannelMessageSend(message.ChannelID, "Please specify a copypasta or an alias!")
+			return
+		}
+		result, err := pastaClient.SavePasta(message.GuildID, message.Author.ID, args[1], args[2])
+		if result {
+			ParseServiceResponse(session, message.ChannelID, "Copypasta with alias "+args[1]+" saved.", err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "Copypasta with alias "+args[1]+" already exists.", err)
+		}
+	case "edit":
+		if len(args) < 3 {
+			session.ChannelMessageSend(message.ChannelID, "Please specify a copypasta or an alias!")
+			return
+		}
+		result, err := pastaClient.EditPasta(message.GuildID, message.ChannelID, message.Author.ID, args[1], args[2])
+		ParseServiceResponse(session, message.ChannelID, result, err)
+	case "list":
+		pastaClient.ListPasta(session, message.GuildID, message.ChannelID, message.Author.ID)
+	case "help":
+		//TODO Useful help embed
+	default:
+		//I wanto to make this an embed too
+		session.ChannelMessageSend(message.ChannelID, "Invalid pasta command. Valid commands are:\n"+
+			"get\n"+
+			"save\n"+
+			"edit\n"+
+			"list\n"+
+			"help\n"+
+			CommandPrefix+"help for more info")
+	}
+}
+
+// GetPasta returns a guild pasta by alias
+func (pastaClient *PastaClient) GetPasta(guildID, alias string) (string, error) {
 	result, err := pastaClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(pastaTableName),
 		Key:       buildPastaKey(guildID, alias),
 	})
 	if err != nil {
-		pastaClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 		pastaClient.PastaErrorLogger.Println(err)
-		return
+		return "", err
 	}
 	pasta, ok := result.Item["pasta"]
 	if ok {
-		pastaClient.DiscordSession.ChannelMessageSend(channelID, *pasta.S)
-	} else {
-		pastaClient.DiscordSession.ChannelMessageSend(channelID, "No copypasta with alias "+alias+" found.")
+		return *pasta.S, nil
 	}
+	return "No copypasta with alias " + alias + " found.", nil
 }
 
-func (pastaClient *PastaClient) SavePasta(guildID, channelID, owner, alias, pasta string) {
+// SavePasta saves a pasta, with a unique alias for a guild
+func (pastaClient *PastaClient) SavePasta(guildID, owner, alias, pasta string) (bool, error) {
 	_, err := pastaClient.DynamoClient.PutItem(&dynamodb.PutItemInput{
 		TableName:           aws.String(pastaTableName),
 		Item:                buildPasta(guildID, owner, alias, pasta),
 		ConditionExpression: aws.String("attribute_not_exists(guild) and attribute_not_exists(alias)"),
 	})
 	if err != nil {
+		pastaClient.PastaErrorLogger.Println(err)
 		if awsErr, ok := err.(awserr.Error); ok {
 			switch awsErr.Code() {
 			case dynamodb.ErrCodeConditionalCheckFailedException:
-				pastaClient.DiscordSession.ChannelMessageSend(channelID, "Copypasta with alias "+alias+" already exists.")
-				return
+				return false, nil
 			}
 		}
-		pastaClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
-		pastaClient.PastaErrorLogger.Println(err)
-		return
+		return false, err
 	}
-	pastaClient.DiscordSession.ChannelMessageSend(channelID, "Copypasta with alias "+alias+" saved.")
+	return true, nil
 }
 
-func (pastaClient *PastaClient) EditPasta(guildID, channelID, requester, alias, pasta string) {
+// EditPasta updates an existing pasta, provided the requester is the author of said pasta
+func (pastaClient *PastaClient) EditPasta(guildID, channelID, requester, alias, pasta string) (string, error) {
 	_, err := pastaClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
 		TableName:           aws.String(pastaTableName),
 		Key:                 buildPastaKey(guildID, alias),
@@ -118,28 +175,25 @@ func (pastaClient *PastaClient) EditPasta(guildID, channelID, requester, alias, 
 				})
 				if err != nil {
 					pastaClient.PastaErrorLogger.Println(err)
-					pastaClient.DiscordSession.ChannelMessageSend(channelID, "Only the author can update this pasta.")
-				} else {
-					authorID, ok := author.Item["owner"]
-					if ok {
-						pastaClient.DiscordSession.ChannelMessageSend(channelID, "Only <@"+*authorID.S+"> can update this pasta.")
-					} else {
-						pastaClient.DiscordSession.ChannelMessageSend(channelID, "Cannot update copypasta that does not exist. Please save first and try again.")
-					}
+					return "Only the author can update this pasta.", nil
 				}
-				return
+				authorID, ok := author.Item["owner"]
+				if ok {
+					return "Only <@" + *authorID.S + "> can update this pasta.", nil
+				}
+				return "Cannot update copypasta that does not exist. Please save first and try again.", nil
 			}
 		}
-		pastaClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 		pastaClient.PastaErrorLogger.Println(err)
-		return
+		return "", err
 	}
-	pastaClient.DiscordSession.ChannelMessageSend(channelID, "Copypasta with alias "+alias+" updated.")
+	return "Copypasta with alias " + alias + " updated.", nil
 }
 
-func (pastaClient *PastaClient) ListPasta(guildID, channelID, userID string) {
+// ListPasta dms the user a list of all pasta saved on the server it was called from
+func (pastaClient *PastaClient) ListPasta(session *discordgo.Session, guildID, channelID, userID string) {
 	var guildName string
-	guild, err := pastaClient.DiscordSession.Guild(guildID)
+	guild, err := session.Guild(guildID)
 	if err != nil {
 		guildName = "An error occurred while retrieving server name."
 		pastaClient.PastaErrorLogger.Println(err)
@@ -147,9 +201,9 @@ func (pastaClient *PastaClient) ListPasta(guildID, channelID, userID string) {
 		guildName = guild.Name
 	}
 
-	dmChannel, err := pastaClient.DiscordSession.UserChannelCreate(userID)
+	dmChannel, err := session.UserChannelCreate(userID)
 	if err != nil {
-		pastaClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Could not DM <@"+userID+">")
+		session.ChannelMessageSend(channelID, "An error occured. Could not DM <@"+userID+">")
 		pastaClient.PastaErrorLogger.Println(err)
 		return
 	}
@@ -169,7 +223,7 @@ func (pastaClient *PastaClient) ListPasta(guildID, channelID, userID string) {
 		func(page *dynamodb.QueryOutput, lastPage bool) bool {
 			//List pastas in chat
 			guildPastaList := buildPastaPage(page)
-			pastaClient.DiscordSession.ChannelMessageSendEmbed(dmChannel.ID,
+			session.ChannelMessageSendEmbed(dmChannel.ID,
 				&discordgo.MessageEmbed{
 					Author: &discordgo.MessageEmbedAuthor{},
 					Thumbnail: &discordgo.MessageEmbedThumbnail{
@@ -186,7 +240,7 @@ func (pastaClient *PastaClient) ListPasta(guildID, channelID, userID string) {
 			return true
 		})
 	if err != nil {
-		pastaClient.DiscordSession.ChannelMessageSend(dmChannel.ID, "An error occured. Please try again later.")
+		session.ChannelMessageSend(dmChannel.ID, "An error occured. Please try again later.")
 		pastaClient.PastaErrorLogger.Println(err)
 		return
 	}

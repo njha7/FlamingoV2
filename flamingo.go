@@ -68,7 +68,7 @@ func main() {
 	//Flamingo service Client construction
 	commandServices = []flamingoservice.FlamingoService{
 		flamingoservice.NewStrikeClient(discord, ddb),
-		flamingoservice.NewPastaClient(discord, ddb),
+		flamingoservice.NewPastaClient(ddb),
 		flamingoservice.NewReactClient(discord, s3),
 	}
 	//Start Flamingo
