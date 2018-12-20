@@ -69,7 +69,7 @@ func main() {
 	commandServices = []flamingoservice.FlamingoService{
 		flamingoservice.NewStrikeClient(discord, ddb),
 		flamingoservice.NewPastaClient(discord, ddb),
-		flamingoservice.NewReactClient(discord, ddb, s3),
+		flamingoservice.NewReactClient(discord, s3),
 	}
 	//Start Flamingo
 	err = discord.Open()
@@ -97,9 +97,8 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	if strings.HasPrefix(m.Message.Content, flamingoservice.CommandPrefix) {
-		//This capacity is a magic number,
-		//it's the average length of most command names
 		for _, v := range commandServices {
+			//Command services are unaware of the prefix
 			if v.IsCommand(m.Content[len(flamingoservice.CommandPrefix):]) {
 				go v.Handle(session, m.Message)
 				return
