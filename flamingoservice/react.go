@@ -39,6 +39,13 @@ func NewReactClient(discordSession *discordgo.Session, dynamoClient *dynamodb.Dy
 	}
 }
 
+func (reactClient *ReactClient) IsCommand(message string) bool {
+	return false
+}
+func (reactClient *ReactClient) Handle(session *discordgo.Session, message *discordgo.Message) {
+	return
+}
+
 func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string) {
 	response, err := http.Get(url)
 	if err != nil {

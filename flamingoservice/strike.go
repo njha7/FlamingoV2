@@ -41,6 +41,13 @@ func NewStrikeClient(discordSession *discordgo.Session, dynamoClient *dynamodb.D
 	}
 }
 
+func (strikeClient *StrikeClient) IsCommand(message string) bool {
+	return false
+}
+func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *discordgo.Message) {
+	return
+}
+
 func (strikeClient *StrikeClient) StrikeUser(guildID, channelID, userID string) {
 	result, err := strikeClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
 		TableName:                 aws.String(strikeTableName),

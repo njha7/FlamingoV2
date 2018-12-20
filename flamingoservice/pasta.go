@@ -44,6 +44,13 @@ func NewPastaClient(discordSession *discordgo.Session, dynamoClient *dynamodb.Dy
 	}
 }
 
+func (pastaClient *PastaClient) IsCommand(message string) bool {
+	return false
+}
+func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *discordgo.Message) {
+	return
+}
+
 func (pastaClient *PastaClient) GetPasta(guildID, channelID, alias string) {
 	result, err := pastaClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(pastaTableName),
