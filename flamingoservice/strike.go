@@ -239,7 +239,7 @@ func (strikeClient *StrikeClient) Help(session *discordgo.Session, channelID str
 				&discordgo.MessageEmbedField{
 					Name: "get",
 					Value: "Retrieves the strike count of mentioned users. \n" +
-						"Usage: ```~strike @user1 @user2 ...```",
+						"Usage: ```~strike get @user1 @user2 ...```",
 				},
 				&discordgo.MessageEmbedField{
 					Name:  "help",
