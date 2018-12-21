@@ -177,7 +177,7 @@ func (strikeClient *StrikeClient) BatchGetStrikesForUser(guildID, channelID stri
 		//turn guild!user ddb key back into a userID from the map
 		userID := strings.Split(strike.ID, "!")[1]
 		username := userIDxuserNameMap[userID]
-		strikeValue := string(strike.Strikes)
+		strikeValue := strconv.Itoa(strike.Strikes)
 		//remove keys that have values in the result
 		delete(userIDxuserNameMap, userID)
 		strikes = append(strikes, &discordgo.MessageEmbedField{
