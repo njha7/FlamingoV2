@@ -33,7 +33,7 @@ Updates an existing copypasta by alias. The copypasta must exist and by authored
 Usage: ```~pasta save $alias $updated_copypasta_text```
 
 #### list
-Retrieves a paginated list of all the copypastas saved in the server and DMs them to the caller.
+Retrieves a list of all the copypastas saved in the server and DMs them to the caller.
 
 Usage: ```~pasta list```
 
@@ -45,12 +45,17 @@ Retrieves a reaction image by alias and posts it. Alias can by any alphanumeric 
 Usage: ```~react get $alias```
 
 #### save
-Saves a new a reaction by alias. Reactions are images uploaded to Discord. They are thumbnailed and saved for later reacall. Alias can by any alphanumeric string with no whitespace.
+Saves a new a reaction by alias. Reactions are images uploaded to Discord. They are thumbnailed and saved for later reacall. Alias can by any alphanumeric string with no whitespace. Can be used to overwrite an existing reaction.
 
 Usage: ```~react save $alias```
 
+#### delete
+Deletes a reaction image and makes it unavailable for use. Alias can by any alphanumeric string with no whitespace.
+
+Usage: ```~react delete $alias```
+
 #### list
-Retrieves a paginated list of all the reaction images saved and DMs them to the caller.
+Retrieves a list of all the reaction images saved and DMs them to the caller.
 
 Usage: ```~react list```
 
