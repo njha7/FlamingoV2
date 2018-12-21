@@ -22,6 +22,7 @@ const (
 // StrikeClient is responsible for handling "strike" commands
 type StrikeClient struct {
 	DynamoClient        *dynamodb.DynamoDB
+	MetricsClient       *flamingolog.FlamingoMetricsClient
 	StrikeServiceLogger *log.Logger
 	StrikeErrorLogger   *log.Logger
 }
@@ -38,9 +39,10 @@ type StrikeKey struct {
 }
 
 // NewStrikeClient constructs a StrikeClient
-func NewStrikeClient(dynamoClient *dynamodb.DynamoDB) *StrikeClient {
+func NewStrikeClient(dynamoClient *dynamodb.DynamoDB, metricsClient *flamingolog.FlamingoMetricsClient) *StrikeClient {
 	return &StrikeClient{
 		DynamoClient:        dynamoClient,
+		MetricsClient:       metricsClient,
 		StrikeServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
 		StrikeErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}

@@ -25,14 +25,16 @@ const (
 // ReactClient is responsible for handling "react" commands
 type ReactClient struct {
 	S3Client           *s3.S3
+	MetricsClient      *flamingolog.FlamingoMetricsClient
 	ReactServiceLogger *log.Logger
 	ReactErrorLogger   *log.Logger
 }
 
 // NewReactClient constructs a ReactClient
-func NewReactClient(s3Client *s3.S3) *ReactClient {
+func NewReactClient(s3Client *s3.S3, metricsClient *flamingolog.FlamingoMetricsClient) *ReactClient {
 	return &ReactClient{
 		S3Client:           s3Client,
+		MetricsClient:      metricsClient,
 		ReactServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
 		ReactErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}

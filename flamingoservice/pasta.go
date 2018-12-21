@@ -20,6 +20,7 @@ const (
 // PastaClient is responsible for handling "pasta" commands
 type PastaClient struct {
 	DynamoClient       *dynamodb.DynamoDB
+	MetricsClient      *flamingolog.FlamingoMetricsClient
 	PastaServiceLogger *log.Logger
 	PastaErrorLogger   *log.Logger
 }
@@ -39,9 +40,10 @@ type PastaKey struct {
 }
 
 // NewPastaClient constructs a PastaClient
-func NewPastaClient(dynamoClient *dynamodb.DynamoDB) *PastaClient {
+func NewPastaClient(dynamoClient *dynamodb.DynamoDB, metricsClient *flamingolog.FlamingoMetricsClient) *PastaClient {
 	return &PastaClient{
 		DynamoClient:       dynamoClient,
+		MetricsClient:      metricsClient,
 		PastaServiceLogger: flamingolog.BuildServiceLogger(pastaServiceName),
 		PastaErrorLogger:   flamingolog.BuildServiceErrorLogger(pastaServiceName),
 	}

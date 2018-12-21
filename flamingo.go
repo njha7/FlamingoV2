@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
@@ -65,11 +66,17 @@ func main() {
 	ddb := dynamodb.New(awsSess, aws.NewConfig().WithRegion(REGION))
 	// Create S3 service client with a specific Region.
 	s3 := s3.New(awsSess, aws.NewConfig().WithRegion(REGION))
+	cw := cloudwatch.New(awsSess, aws.NewConfig().WithRegion(REGION))
 	//Flamingo service Client construction
+	metricsClient := &flamingolog.FlamingoMetricsClient{
+		CloudWatchAgent: cw,
+		Local:           local,
+	}
+
 	commandServices = []flamingoservice.FlamingoService{
-		flamingoservice.NewStrikeClient(ddb),
-		flamingoservice.NewPastaClient(ddb),
-		flamingoservice.NewReactClient(s3),
+		flamingoservice.NewStrikeClient(ddb, metricsClient),
+		flamingoservice.NewPastaClient(ddb, metricsClient),
+		flamingoservice.NewReactClient(s3, metricsClient),
 	}
 	//Start Flamingo
 	err = discord.Open()
