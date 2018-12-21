@@ -9,6 +9,16 @@ const (
 	CommandPrefix string = "~"
 )
 
+var (
+	// Commands is the source of truth for all available commands and command actions
+	Commands = map[string][]string{
+		"strike": {"", "get", "clear"},
+		"pasta":  {"get", "save", "edit", "list"},
+		"react":  {"get", "save", "delete", "list"},
+		"auth":   {},
+	}
+)
+
 // FlamingoService is an interface for services. Services are responsible for identifying a potential invocation.
 // If a message is identified as a command, the service is responsible for replying.
 type FlamingoService interface {

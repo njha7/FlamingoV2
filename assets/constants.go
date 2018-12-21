@@ -10,4 +10,6 @@ const (
 	StrikeTableName = "FlamingoStrikes"
 	// PastaTableName is the name of the table where pastas are persisted
 	PastaTableName = "FlamingoPasta"
+	// AuthTableName is the name of the table where permissions are persisted
+	AuthTableName = "FlamingoAuth"
 )
