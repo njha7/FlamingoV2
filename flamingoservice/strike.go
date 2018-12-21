@@ -2,7 +2,6 @@ package flamingoservice
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -56,7 +55,6 @@ func (strikeClient *StrikeClient) IsCommand(message string) bool {
 func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *discordgo.Message) {
 	//first word is always "strike", safe to remove
 	args := strings.SplitN(message.Content, " ", 3)[1:]
-	fmt.Println(args)
 	if len(args) < 1 {
 		strikeClient.Help(session, message.ChannelID)
 		return
