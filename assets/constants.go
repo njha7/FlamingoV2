@@ -12,4 +12,6 @@ const (
 	PastaTableName = "FlamingoPasta"
 	// AuthTableName is the name of the table where permissions are persisted
 	AuthTableName = "FlamingoAuth"
+	// CloudWatchNameSpace is the root of the namespace of all metrics emitted by Flamingo
+	CloudWatchNamespace = "Flamingo/"
 )
