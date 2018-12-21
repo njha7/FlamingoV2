@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/njha7/FlamingoV2/assets"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -18,46 +20,82 @@ import (
 
 const (
 	reactServiceName = "React"
-	reactBucket      = "flamingo-bot"
 )
 
+// ReactClient is responsible for handling "react" commands
 type ReactClient struct {
-	DiscordSession     *discordgo.Session
 	S3Client           *s3.S3
 	ReactServiceLogger *log.Logger
 	ReactErrorLogger   *log.Logger
 }
 
-func NewReactClient(discordSession *discordgo.Session, s3Client *s3.S3) *ReactClient {
+// NewReactClient constructs a ReactClient
+func NewReactClient(s3Client *s3.S3) *ReactClient {
 	return &ReactClient{
-		DiscordSession:     discordSession,
 		S3Client:           s3Client,
 		ReactServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
 		ReactErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}
 }
 
+// IsCommand identifies a message as a potential command
 func (reactClient *ReactClient) IsCommand(message string) bool {
-	return false
-}
-func (reactClient *ReactClient) Handle(session *discordgo.Session, message *discordgo.Message) {
-	return
+	return strings.HasPrefix(message, "react")
 }
 
-func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string) {
+// Handle parses a command message and performs the commanded action
+func (reactClient *ReactClient) Handle(session *discordgo.Session, message *discordgo.Message) {
+	//first word is always "react", safe to remove
+	args := strings.Fields(message.Content)[1:]
+	if len(args) < 1 {
+		reactClient.Help(session, message.ChannelID)
+		return
+	}
+	//sub-commands of react
+	switch args[0] {
+	case "get":
+		if len(args) < 2 {
+			session.ChannelMessageSend(message.ChannelID, "Please specify an alias.")
+			return
+		}
+		reaction, err := reactClient.GetReaction(message.ChannelID, message.Author.ID, args[1])
+		ParseServiceResponse(session, message.ChannelID, reaction, err)
+	case "save":
+		if len(args) < 2 || len(message.Attachments) < 1 {
+			session.ChannelMessageSend(message.ChannelID, "Please upload an image or specify an alias.")
+			return
+		}
+		_, err := reactClient.PutReaction(message.ChannelID, message.Author.ID, args[1], message.Attachments[0].URL)
+		ParseServiceResponse(session, message.ChannelID, "Reaction with alias "+args[1]+" saved.", err)
+	case "delete":
+		if len(args) < 2 {
+			session.ChannelMessageSend(message.ChannelID, "Please specify an alias.")
+			return
+		}
+		result, err := reactClient.DeleteReaction(message.ChannelID, message.Author.ID, args[1])
+		ParseServiceResponse(session, message.ChannelID, result, err)
+	case "list":
+		reactClient.ListReactions(session, message.ChannelID, message.Author.ID)
+	case "help":
+		reactClient.Help(session, message.ChannelID)
+	default:
+		reactClient.Help(session, message.ChannelID)
+	}
+}
+
+// PutReaction saves an aspect-ratio preserved thumbnail of an image for later use
+func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string) (bool, error) {
 	response, err := http.Get(url)
 	if err != nil {
-		reactClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 		reactClient.ReactErrorLogger.Println(err)
-		return
+		return false, err
 	}
 	defer response.Body.Close()
 
 	image, _, err := image.Decode(response.Body)
 	if err != nil {
-		reactClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 		reactClient.ReactErrorLogger.Println(err)
-		return
+		return false, err
 	}
 
 	x := float64(image.Bounds().Size().X)
@@ -72,12 +110,11 @@ func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string
 	buffer := new(bytes.Buffer)
 	err = png.Encode(buffer, image)
 	if err != nil {
-		reactClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 		reactClient.ReactErrorLogger.Println(err)
-		return
+		return false, err
 	}
 	_, err = reactClient.S3Client.PutObject(&s3.PutObjectInput{
-		Bucket:        aws.String(reactBucket),
+		Bucket:        aws.String(assets.BucketName),
 		Key:           aws.String(buildReactionKey(userID, alias)),
 		Body:          bytes.NewReader(buffer.Bytes()),
 		ContentLength: aws.Int64(int64(len(buffer.Bytes()))),
@@ -86,76 +123,82 @@ func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string
 		ACL:           aws.String("public-read"),
 	})
 	if err != nil {
-		reactClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 		reactClient.ReactErrorLogger.Println(err)
-		return
+		return false, err
 	}
-	reactClient.DiscordSession.ChannelMessageSend(channelID, alias+" reaction saved.")
+	return true, nil
+	// reactClient.DiscordSession.ChannelMessageSend(channelID, alias+" reaction saved.")
 }
 
-func (reactClient *ReactClient) GetReaction(channelID, userID, alias string) {
-	//Dirty way to test if object exists w/o querying it directly
+// GetReaction retrieves a reaction by alias and returns the url
+func (reactClient *ReactClient) GetReaction(channelID, userID, alias string) (string, error) {
+	//Dirty way to test if object exists w/o querying it directly (ACL is smaller than the image)
 	_, err := reactClient.S3Client.GetObjectAcl(&s3.GetObjectAclInput{
-		Bucket: aws.String(reactBucket),
+		Bucket: aws.String(assets.BucketName),
 		Key:    aws.String(buildReactionKey(userID, alias)),
 	})
 	if err != nil {
-		errMessage := "An error occured. Please try again later."
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case s3.ErrCodeNoSuchKey:
-				errMessage = "No reaction with alias " + alias + " exists."
+				return "No reaction with alias " + alias + " exists.", nil
+			default:
+				reactClient.ReactErrorLogger.Println(err)
+				return "", err
 			}
+		} else {
+			reactClient.ReactErrorLogger.Println(err)
+			return "", err
 		}
-		reactClient.DiscordSession.ChannelMessageSend(channelID, errMessage)
-		reactClient.ReactErrorLogger.Println(err)
-		return
 	}
 	//Discord unmarshalling gives better results than sending the file
-	reactClient.DiscordSession.ChannelMessageSend(channelID, "mfw "+buildReactionURL(userID, alias))
+	return "mfw " + buildReactionURL(userID, alias), nil
 }
 
-func (reactClient *ReactClient) DeleteReaction(channelID, userID, alias string) {
+// DeleteReaction deletes a users reaction image by alias
+func (reactClient *ReactClient) DeleteReaction(channelID, userID, alias string) (string, error) {
 	key := buildReactionKey(userID, alias)
 	_, err := reactClient.S3Client.DeleteObject(&s3.DeleteObjectInput{
-		Bucket: aws.String(reactBucket),
+		Bucket: aws.String(assets.BucketName),
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		errMessage := "An error occured. Please try again later."
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case s3.ErrCodeNoSuchKey:
-				errMessage = "No reaction with alias " + alias + " exists."
+				return "No reaction with alias " + alias + " exists.", nil
+			default:
+				reactClient.ReactErrorLogger.Println(err)
+				return "", err
 			}
+		} else {
+			reactClient.ReactErrorLogger.Println(err)
+			return "", err
 		}
-		reactClient.DiscordSession.ChannelMessageSend(channelID, errMessage)
-		reactClient.ReactErrorLogger.Println(err)
-		return
 	}
 
 	err = reactClient.S3Client.WaitUntilObjectNotExists(&s3.HeadObjectInput{
-		Bucket: aws.String(reactBucket),
+		Bucket: aws.String(assets.BucketName),
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		reactClient.DiscordSession.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 		reactClient.ReactErrorLogger.Println(err)
-		return
+		return "", err
 	}
-	reactClient.DiscordSession.ChannelMessageSend(channelID, "Reaction with alias "+alias+" deleted.")
+	return "Reaction with alias " + alias + " deleted.", nil
 }
 
-func (reactClient *ReactClient) ListReactions(channelID, userID string) {
-	dmChannel, err := reactClient.DiscordSession.UserChannelCreate(userID)
+// ListReactions lists all reactions a user has saved via dm
+func (reactClient *ReactClient) ListReactions(session *discordgo.Session, channelID, userID string) {
+	dmChannel, err := session.UserChannelCreate(userID)
 	if err != nil {
-		reactClient.DiscordSession.ChannelMessageSend(channelID, "An error occurred. Could not DM <@"+userID+">.")
+		session.ChannelMessageSend(channelID, "An error occurred. Could not DM <@"+userID+">.")
 		reactClient.ReactErrorLogger.Println(err)
 		return
 	}
 	err = reactClient.S3Client.ListObjectsV2Pages(
 		&s3.ListObjectsV2Input{
-			Bucket:  aws.String(reactBucket),
+			Bucket:  aws.String(assets.BucketName),
 			Prefix:  aws.String(buildReactionKey(userID, "")),
 			MaxKeys: aws.Int64(30),
 		},
@@ -171,12 +214,12 @@ func (reactClient *ReactClient) ListReactions(channelID, userID string) {
 			for _, v := range page.Contents {
 				alias := strings.Split(*v.Key, "/")[1]
 				reactionList = append(reactionList, &discordgo.MessageEmbedField{
-					Name: alias,
-					Value:  "https://s3.amazonaws.com/"+reactBucket+"/"+*v.Key,
+					Name:   alias,
+					Value:  "https://s3.amazonaws.com/" + assets.BucketName + "/" + *v.Key,
 					Inline: true,
 				})
 			}
-			reactClient.DiscordSession.ChannelMessageSendEmbed(dmChannel.ID,
+			session.ChannelMessageSendEmbed(dmChannel.ID,
 				&discordgo.MessageEmbed{
 					Author: &discordgo.MessageEmbedAuthor{},
 					Thumbnail: &discordgo.MessageEmbedThumbnail{
@@ -194,12 +237,52 @@ func (reactClient *ReactClient) ListReactions(channelID, userID string) {
 		})
 }
 
+// Help provides assistance with the react command by sending a help dialogue
+func (reactClient *ReactClient) Help(session *discordgo.Session, channelID string) {
+	session.ChannelMessageSendEmbed(channelID,
+		&discordgo.MessageEmbed{
+			Author: &discordgo.MessageEmbedAuthor{},
+			Thumbnail: &discordgo.MessageEmbedThumbnail{
+				URL: assets.AvatarURL,
+			},
+			Color:       0xff0000,
+			Title:       "You need help!",
+			Description: "The commands for react are:",
+			Fields: []*discordgo.MessageEmbedField{
+				&discordgo.MessageEmbedField{
+					Name: "get",
+					Value: "Retrieves a reaction image by alias and posts it. Alias can by any alphanumeric string with no whitespace.\n" +
+						"Usage: ```~react get $alias```",
+				},
+				&discordgo.MessageEmbedField{
+					Name: "save",
+					Value: "Saves a new a reaction by alias. Reactions are images uploaded to Discord. They are thumbnailed and saved for later reacall. Alias can by any alphanumeric string with no whitespace. Can be used to overwrite an existing reaction.\n" +
+						"Usage: ```~react save $alias```",
+				},
+				&discordgo.MessageEmbedField{
+					Name: "delete",
+					Value: "Deletes a reaction image and makes it unavailable for use. Alias can by any alphanumeric string with no whitespace.\n" +
+						"Usage: ```~react delete $alias```",
+				},
+				&discordgo.MessageEmbedField{
+					Name: "list",
+					Value: "Retrieves a list of all the reaction images saved and DMs them to the caller.\n" +
+						"Usage: ```~react list```",
+				},
+				&discordgo.MessageEmbedField{
+					Name:  "help",
+					Value: "Shows this help message.",
+				},
+			},
+		})
+}
+
 func buildReactionKey(userID, alias string) (key string) {
 	key = userID + "/" + alias
 	return
 }
 
 func buildReactionURL(userID, alias string) (s3url string) {
-	s3url = "https://s3.amazonaws.com/" + reactBucket + "/" + userID + "/" + alias
+	s3url = "https://s3.amazonaws.com/" + assets.BucketName + "/" + userID + "/" + alias
 	return
 }
