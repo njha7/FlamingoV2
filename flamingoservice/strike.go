@@ -32,7 +32,7 @@ type Strike struct {
 	Strikes int    `dynamodbav:"strikes"`
 }
 
-// StrikeKey is a convenience struct for marshaling Go types into a key for DDB requests for a given user
+// StrikeKey is a convenience struct for marshalling Go types into a key for DDB requests for a given user
 type StrikeKey struct {
 	ID string `dynamodbav:"guild!user"`
 }
