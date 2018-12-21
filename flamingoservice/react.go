@@ -232,10 +232,7 @@ func (reactClient *ReactClient) ListReactions(session *discordgo.Session, channe
 					Fields:      reactionList[:len(reactionList)],
 					Title:       "Your reactions",
 				})
-			if lastPage {
-				return false
-			}
-			return true
+			return !lastPage
 		})
 }
 

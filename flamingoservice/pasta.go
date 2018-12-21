@@ -223,10 +223,7 @@ func (pastaClient *PastaClient) ListPasta(session *discordgo.Session, guildID, c
 					Fields:      guildPastaList,
 					Title:       "Copypastas in " + guildName,
 				})
-			if lastPage {
-				return false
-			}
-			return true
+			return !lastPage
 		})
 	if err != nil {
 		session.ChannelMessageSend(dmChannel.ID, "An error occured. Please try again later.")
