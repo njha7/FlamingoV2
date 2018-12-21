@@ -91,6 +91,7 @@ func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *di
 	default:
 		if len(message.Mentions) < 1 {
 			session.ChannelMessageSend(message.ChannelID, "You must mention someone to strike!")
+			strikeClient.Help(session, message.ChannelID)
 			return
 		}
 		for _, v := range message.Mentions {
@@ -220,7 +221,7 @@ func (strikeClient *StrikeClient) ClearStrikesForUser(guildID, channelID, userID
 	return "<@" + userID + "> has no strikes.", nil
 }
 
-// Help provides assistance with the pasta command by sending a help dialogue
+// Help provides assistance with the strike command by sending a help dialogue
 func (strikeClient *StrikeClient) Help(session *discordgo.Session, channelID string) {
 	session.ChannelMessageSendEmbed(channelID,
 		&discordgo.MessageEmbed{
