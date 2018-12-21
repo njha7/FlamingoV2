@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 
 	"github.com/njha7/FlamingoV2/assets"
@@ -73,6 +74,9 @@ func (authClient *AuthClient) IsCommand(message string) bool {
 //Authorize determines a user's eligibility to invoke a command
 // returns true if authorized, false otherwise
 func (authClient *AuthClient) Authorize(guildID, userID, command, action string, roleIDList []string) bool {
+	//Check permissive flag value
+	permissiveFlagValue, err := authClient.GetPermissiveFlagValue(guildID)
+
 	guildRoles, err := authClient.DiscordClient.GuildRoles(guildID)
 	if err != nil {
 		authClient.AuthErrorLogger.Println(err)
@@ -102,13 +106,7 @@ func (authClient *AuthClient) Authorize(guildID, userID, command, action string,
 	sort.Ints(rolePositions)
 
 	rolePermissions := make(map[string]map[string]bool)
-	userPermissions := make(map[string]map[string]bool)
-
-	//TODO Query for permissiveness flag
-	//Permissiveness flag defines behavior when no permissions records are found
-	//permissive=true allows treats total absence permissions records for as a record granting permission
-	//conversely, permissive=false treats a total absence as a record denying permission
-	//if this record is missing, deny all requests
+	userPermissions := make(map[string]bool)
 
 	authClient.DynamoClient.BatchGetItemPages(&dynamodb.BatchGetItemInput{
 		RequestItems: buildAuthorizationKeys(guildID, userID, command, action, roleIDList),
@@ -118,11 +116,18 @@ func (authClient *AuthClient) Authorize(guildID, userID, command, action string,
 				rule := &PermissionObject{}
 				dynamodbattribute.UnmarshalMap(permission, rule)
 				//Role-based rules
-				if strings.HasSuffix(rule.Permission, "role") {
+				if strings.HasPrefix(rule.Permission, "role!") {
+					//guild, command ! action
+					ruleArgs := strings.SplitN(rule.Guild, "!", 2)
+					roleID := strings.Split(rule.Permission, "!")[1]
 					//populate role permissions
+					rolePermissions[roleID][ruleArgs[2]] = rule.Allow
 				} else {
 					//User-based rules
+					//guild, command ! action
+					ruleArgs := strings.SplitN(rule.Guild, "!", 2)
 					//populate user permissions
+					userPermissions[ruleArgs[2]] = rule.Allow
 				}
 			}
 			return !lastPage
@@ -130,6 +135,11 @@ func (authClient *AuthClient) Authorize(guildID, userID, command, action string,
 	/*
 		TODO: first evaluate user permissions,
 	*/
+	//Do short circuit check
+	if len(rolePermissions) == 0 && len(userPermissions) == 0 {
+		return permissiveFlagValue
+	}
+
 	return false
 }
 
@@ -162,4 +172,24 @@ func buildAuthorizationKey(guildID, userID, roleID, command, action string, isRo
 		Permission: rangeKey,
 	})
 	return key
+}
+
+// GetPermissiveFlagValue checks for the value of the permissive flag for a guild.
+func (authClient *AuthClient) GetPermissiveFlagValue(guildID string) (bool, error) {
+	//Permissiveness flag defines behavior when no permissions records are found
+	//permissive=true allows treats total absence permissions records for as a record granting permission
+	//conversely, permissive=false treats a total absence as a record denying permission
+	//if this record is missing, deny all requests
+	result, err := authClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(assets.AuthTableName),
+		Key:       buildAuthorizationKey(guildID, "", "", "", "", false),
+	})
+	if err != nil {
+		authClient.AuthErrorLogger.Println(err)
+		return false, err
+	}
+	//TODO nil check
+	permissiveFlag := &PermissionObject{}
+	dynamodbattribute.UnmarshalMap(result.Item, permissiveFlag)
+	return permissiveFlag.Allow, nil
 }
