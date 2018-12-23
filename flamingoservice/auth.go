@@ -1,6 +1,7 @@
 package flamingoservice
 
 import (
+	"errors"
 	"log"
 	"sort"
 	"strings"
@@ -34,7 +35,7 @@ type AuthClient struct {
 // Permission is an evaluatable representation of permission
 type Permission struct {
 	Guild   string
-	Role    string
+	ID      string
 	Command string
 	Action  string
 	Allow   bool
@@ -76,6 +77,10 @@ func (authClient *AuthClient) IsCommand(message string) bool {
 func (authClient *AuthClient) Authorize(guildID, userID, command, action string, roleIDList []string) bool {
 	//Check permissive flag value
 	permissiveFlagValue, err := authClient.GetPermissiveFlagValue(guildID)
+	if err != nil {
+		authClient.AuthErrorLogger.Println(err)
+		return false
+	}
 
 	guildRoles, err := authClient.DiscordClient.GuildRoles(guildID)
 	if err != nil {
@@ -121,26 +126,47 @@ func (authClient *AuthClient) Authorize(guildID, userID, command, action string,
 					ruleArgs := strings.SplitN(rule.Guild, "!", 2)
 					roleID := strings.Split(rule.Permission, "!")[1]
 					//populate role permissions
-					rolePermissions[roleID][ruleArgs[2]] = rule.Allow
+					rolePermissions[roleID][ruleArgs[1]] = rule.Allow
 				} else {
 					//User-based rules
 					//guild, command ! action
 					ruleArgs := strings.SplitN(rule.Guild, "!", 2)
 					//populate user permissions
-					userPermissions[ruleArgs[2]] = rule.Allow
+					userPermissions[ruleArgs[1]] = rule.Allow
 				}
 			}
 			return !lastPage
 		})
-	/*
-		TODO: first evaluate user permissions,
-	*/
 	//Do short circuit check
 	if len(rolePermissions) == 0 && len(userPermissions) == 0 {
 		return permissiveFlagValue
 	}
-
+	//Evaluate user permissions
+	userPerm := evaluatePermissions(userPermissions, command, action)
+	if userPerm != nil {
+		return *userPerm
+	}
+	for i := len(rolePositions) - 1; i > 0; i-- {
+		rolePerm, ok := rolePermissions[rolePositionMap[rolePositions[i]]]
+		if ok {
+			//Impossible for this to be nil, will return T or F
+			return *evaluatePermissions(rolePerm, command, action)
+		}
+	}
 	return false
+}
+
+func evaluatePermissions(permissions map[string]bool, command, action string) *bool {
+	var hasPermission *bool
+	commandPermission, cp := permissions[command+"!"]
+	actionPermission, ap := permissions[command+"!"+action]
+	if ap {
+		return &actionPermission
+	}
+	if cp {
+		return &commandPermission
+	}
+	return hasPermission
 }
 
 func buildAuthorizationKeys(guildID, userID, command, action string, roleIDList []string) map[string]*dynamodb.KeysAndAttributes {
@@ -156,6 +182,7 @@ func buildAuthorizationKeys(guildID, userID, command, action string, roleIDList 
 	}
 	//Add key for userID
 	keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, action, false))
+	keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, "", false))
 	keysAndAttributes[assets.AuthTableName].SetKeys(keys)
 	return keysAndAttributes
 }
@@ -188,7 +215,10 @@ func (authClient *AuthClient) GetPermissiveFlagValue(guildID string) (bool, erro
 		authClient.AuthErrorLogger.Println(err)
 		return false, err
 	}
-	//TODO nil check
+	_, ok := result.Item["perm"]
+	if !ok {
+		return false, errors.New("Permissive flag not found for guild:" + guildID)
+	}
 	permissiveFlag := &PermissionObject{}
 	dynamodbattribute.UnmarshalMap(result.Item, permissiveFlag)
 	return permissiveFlag.Allow, nil
