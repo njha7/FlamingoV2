@@ -107,7 +107,7 @@ func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string
 	dx := uint(x * reszieRatio)
 	dy := uint(y * reszieRatio)
 
-	image = resize.Resize(dx, dy, image, resize.NearestNeighbor)
+	image = resize.Resize(dx, dy, image, resize.Bicubic)
 
 	buffer := new(bytes.Buffer)
 	err = png.Encode(buffer, image)
