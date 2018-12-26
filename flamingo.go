@@ -72,11 +72,12 @@ func main() {
 		CloudWatchAgent: cw,
 		Local:           local,
 	}
+	authClient := flamingoservice.NewAuthClient(discord, ddb, metricsClient)
 
 	commandServices = []flamingoservice.FlamingoService{
 		flamingoservice.NewStrikeClient(ddb, metricsClient),
 		flamingoservice.NewPastaClient(ddb, metricsClient),
-		flamingoservice.NewReactClient(s3, metricsClient),
+		flamingoservice.NewReactClient(s3, metricsClient, authClient),
 	}
 	//Start Flamingo
 	err = discord.Open()

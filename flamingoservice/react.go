@@ -26,15 +26,17 @@ const (
 type ReactClient struct {
 	S3Client           *s3.S3
 	MetricsClient      *flamingolog.FlamingoMetricsClient
+	AuthClient         *AuthClient
 	ReactServiceLogger *log.Logger
 	ReactErrorLogger   *log.Logger
 }
 
 // NewReactClient constructs a ReactClient
-func NewReactClient(s3Client *s3.S3, metricsClient *flamingolog.FlamingoMetricsClient) *ReactClient {
+func NewReactClient(s3Client *s3.S3, metricsClient *flamingolog.FlamingoMetricsClient, authClient *AuthClient) *ReactClient {
 	return &ReactClient{
 		S3Client:           s3Client,
 		MetricsClient:      metricsClient,
+		AuthClient:         authClient,
 		ReactServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
 		ReactErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}
@@ -60,8 +62,12 @@ func (reactClient *ReactClient) Handle(session *discordgo.Session, message *disc
 			session.ChannelMessageSend(message.ChannelID, "Please specify an alias.")
 			return
 		}
-		reaction, err := reactClient.GetReaction(message.ChannelID, message.Author.ID, args[1])
-		ParseServiceResponse(session, message.ChannelID, reaction, err)
+		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, "react", "get") {
+			reaction, err := reactClient.GetReaction(message.ChannelID, message.Author.ID, args[1])
+			ParseServiceResponse(session, message.ChannelID, reaction, err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "save":
 		if len(args) < 2 || len(message.Attachments) < 1 {
 			session.ChannelMessageSend(message.ChannelID, "Please upload an image or specify an alias.")
@@ -129,7 +135,6 @@ func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string
 		return false, err
 	}
 	return true, nil
-	// reactClient.DiscordSession.ChannelMessageSend(channelID, alias+" reaction saved.")
 }
 
 // GetReaction retrieves a reaction by alias and returns the url

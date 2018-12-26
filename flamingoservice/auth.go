@@ -32,15 +32,6 @@ type AuthClient struct {
 	AuthErrorLogger   *log.Logger
 }
 
-// Permission is an evaluatable representation of permission
-type Permission struct {
-	Guild   string
-	ID      string
-	Command string
-	Action  string
-	Allow   bool
-}
-
 // PermissionObject represents the schema of permissions
 type PermissionObject struct {
 	Guild      string `dynamodbav:"guild"`
@@ -72,15 +63,41 @@ func (authClient *AuthClient) IsCommand(message string) bool {
 	return strings.HasPrefix(message, "auth")
 }
 
+// Handle parses a command message and performs the commanded action
+func (authClient *AuthClient) Handle(session *discordgo.Session, message *discordgo.Message) {
+	//first word is always "auth", safe to remove
+	args := strings.Fields(message.Content)[1:]
+	if len(args) < 1 {
+		authClient.Help(session, message.ChannelID)
+		return
+	}
+	//sub-commands of auth
+	switch args[0] {
+	case "allow":
+	case "deny":
+	case "get":
+	case "list":
+	case "help":
+		authClient.Help(session, message.ChannelID)
+	}
+}
+
 //Authorize determines a user's eligibility to invoke a command
 // returns true if authorized, false otherwise
-func (authClient *AuthClient) Authorize(guildID, userID, command, action string, roleIDList []string) bool {
+func (authClient *AuthClient) Authorize(guildID, userID, command, action string) bool {
 	//Check permissive flag value
 	permissiveFlagValue, err := authClient.GetPermissiveFlagValue(guildID)
 	if err != nil {
 		authClient.AuthErrorLogger.Println(err)
 		return false
 	}
+
+	member, err := authClient.DiscordClient.GuildMember(guildID, userID)
+	if err != nil {
+		authClient.AuthErrorLogger.Println(err)
+		return false
+	}
+	roleIDList := member.Roles
 
 	guildRoles, err := authClient.DiscordClient.GuildRoles(guildID)
 	if err != nil {
@@ -156,6 +173,49 @@ func (authClient *AuthClient) Authorize(guildID, userID, command, action string,
 	return false
 }
 
+// GetPermissiveFlagValue checks for the value of the permissive flag for a guild.
+func (authClient *AuthClient) GetPermissiveFlagValue(guildID string) (bool, error) {
+	//Permissiveness flag defines behavior when no permissions records are found
+	//permissive=true allows treats total absence permissions records for as a record granting permission
+	//conversely, permissive=false treats a total absence as a record denying permission
+	//if this record is missing, deny all requests
+	result, err := authClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(assets.AuthTableName),
+		Key:       buildAuthorizationKey(guildID, "", "", "", "", false),
+	})
+	if err != nil {
+		authClient.AuthErrorLogger.Println(err)
+		return false, err
+	}
+	_, ok := result.Item["perm"]
+	if !ok {
+		return false, errors.New("Permissive flag not found for guild:" + guildID)
+	}
+	permissiveFlag := &PermissionObject{}
+	dynamodbattribute.UnmarshalMap(result.Item, permissiveFlag)
+	return permissiveFlag.Allow, nil
+}
+
+// Help provides assistance with the react command by sending a help dialogue
+func (authClient *AuthClient) Help(session *discordgo.Session, channelID string) {
+	session.ChannelMessageSendEmbed(channelID,
+		&discordgo.MessageEmbed{
+			Author: &discordgo.MessageEmbedAuthor{},
+			Thumbnail: &discordgo.MessageEmbedThumbnail{
+				URL: assets.AvatarURL,
+			},
+			Color:       0xff0000,
+			Title:       "You need help!",
+			Description: "The commands for auth are:",
+			Fields: []*discordgo.MessageEmbedField{
+				&discordgo.MessageEmbedField{
+					Name:  "",
+					Value: "",
+				},
+			},
+		})
+}
+
 func evaluatePermissions(permissions map[string]bool, command, action string) *bool {
 	var hasPermission *bool
 	commandPermission, cp := permissions[command+"!"]
@@ -199,27 +259,4 @@ func buildAuthorizationKey(guildID, userID, roleID, command, action string, isRo
 		Permission: rangeKey,
 	})
 	return key
-}
-
-// GetPermissiveFlagValue checks for the value of the permissive flag for a guild.
-func (authClient *AuthClient) GetPermissiveFlagValue(guildID string) (bool, error) {
-	//Permissiveness flag defines behavior when no permissions records are found
-	//permissive=true allows treats total absence permissions records for as a record granting permission
-	//conversely, permissive=false treats a total absence as a record denying permission
-	//if this record is missing, deny all requests
-	result, err := authClient.DynamoClient.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(assets.AuthTableName),
-		Key:       buildAuthorizationKey(guildID, "", "", "", "", false),
-	})
-	if err != nil {
-		authClient.AuthErrorLogger.Println(err)
-		return false, err
-	}
-	_, ok := result.Item["perm"]
-	if !ok {
-		return false, errors.New("Permissive flag not found for guild:" + guildID)
-	}
-	permissiveFlag := &PermissionObject{}
-	dynamodbattribute.UnmarshalMap(result.Item, permissiveFlag)
-	return permissiveFlag.Allow, nil
 }
