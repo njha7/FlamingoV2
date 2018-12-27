@@ -230,7 +230,7 @@ func (reactClient *ReactClient) ListReactions(session *discordgo.Session, channe
 				&discordgo.MessageEmbed{
 					Author: &discordgo.MessageEmbedAuthor{},
 					Thumbnail: &discordgo.MessageEmbedThumbnail{
-						URL: "https://cdn.discordapp.com/avatars/518879406509391878/ca293c592d560f09d958e85166938e88.png?size=256",
+						URL: assets.AvatarURL,
 					},
 					Color:       0x0000ff,
 					Description: "A list of your reactions",
