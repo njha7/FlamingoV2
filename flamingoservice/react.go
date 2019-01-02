@@ -20,6 +20,7 @@ import (
 
 const (
 	reactServiceName = "React"
+	reactCommand     = "react"
 )
 
 // ReactClient is responsible for handling "react" commands
@@ -44,7 +45,7 @@ func NewReactClient(s3Client *s3.S3, metricsClient *flamingolog.FlamingoMetricsC
 
 // IsCommand identifies a message as a potential command
 func (reactClient *ReactClient) IsCommand(message string) bool {
-	return strings.HasPrefix(message, "react")
+	return strings.HasPrefix(message, reactCommand)
 }
 
 // Handle parses a command message and performs the commanded action
@@ -62,7 +63,7 @@ func (reactClient *ReactClient) Handle(session *discordgo.Session, message *disc
 			session.ChannelMessageSend(message.ChannelID, "Please specify an alias.")
 			return
 		}
-		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, "react", "get") {
+		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, reactCommand, "get") {
 			reaction, err := reactClient.GetReaction(message.ChannelID, message.Author.ID, args[1])
 			ParseServiceResponse(session, message.ChannelID, reaction, err)
 		} else {
@@ -73,15 +74,23 @@ func (reactClient *ReactClient) Handle(session *discordgo.Session, message *disc
 			session.ChannelMessageSend(message.ChannelID, "Please upload an image or specify an alias.")
 			return
 		}
-		_, err := reactClient.PutReaction(message.ChannelID, message.Author.ID, args[1], message.Attachments[0].URL)
-		ParseServiceResponse(session, message.ChannelID, "Reaction with alias "+args[1]+" saved.", err)
+		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, reactCommand, "save") {
+			_, err := reactClient.PutReaction(message.ChannelID, message.Author.ID, args[1], message.Attachments[0].URL)
+			ParseServiceResponse(session, message.ChannelID, "Reaction with alias "+args[1]+" saved.", err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "delete":
 		if len(args) < 2 {
 			session.ChannelMessageSend(message.ChannelID, "Please specify an alias.")
 			return
 		}
-		result, err := reactClient.DeleteReaction(message.ChannelID, message.Author.ID, args[1])
-		ParseServiceResponse(session, message.ChannelID, result, err)
+		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, reactCommand, "delete") {
+			result, err := reactClient.DeleteReaction(message.ChannelID, message.Author.ID, args[1])
+			ParseServiceResponse(session, message.ChannelID, result, err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "list":
 		reactClient.ListReactions(session, message.ChannelID, message.Author.ID)
 	case "help":

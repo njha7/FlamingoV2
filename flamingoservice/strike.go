@@ -17,12 +17,14 @@ import (
 
 const (
 	strikeServiceName = "Strike"
+	strikeCommand     = "strike"
 )
 
 // StrikeClient is responsible for handling "strike" commands
 type StrikeClient struct {
 	DynamoClient        *dynamodb.DynamoDB
 	MetricsClient       *flamingolog.FlamingoMetricsClient
+	AuthClient          *AuthClient
 	StrikeServiceLogger *log.Logger
 	StrikeErrorLogger   *log.Logger
 }
@@ -39,10 +41,11 @@ type StrikeKey struct {
 }
 
 // NewStrikeClient constructs a StrikeClient
-func NewStrikeClient(dynamoClient *dynamodb.DynamoDB, metricsClient *flamingolog.FlamingoMetricsClient) *StrikeClient {
+func NewStrikeClient(dynamoClient *dynamodb.DynamoDB, metricsClient *flamingolog.FlamingoMetricsClient, authClient *AuthClient) *StrikeClient {
 	return &StrikeClient{
 		DynamoClient:        dynamoClient,
 		MetricsClient:       metricsClient,
+		AuthClient:          authClient,
 		StrikeServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
 		StrikeErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}
@@ -50,7 +53,7 @@ func NewStrikeClient(dynamoClient *dynamodb.DynamoDB, metricsClient *flamingolog
 
 // IsCommand identifies a message as a potential command
 func (strikeClient *StrikeClient) IsCommand(message string) bool {
-	return strings.HasPrefix(message, "strike")
+	return strings.HasPrefix(message, strikeCommand)
 }
 
 // Handle parses a command message and performs the commanded action
@@ -76,16 +79,18 @@ func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *di
 		}
 
 	case "clear":
-		// Command disabled for now
-		ParseServiceResponse(session, message.ChannelID, "strike clear has been disabled temporarily", nil)
-		// if len(message.Mentions) < 1 {
-		// 	session.ChannelMessageSend(message.ChannelID, "Please mention somone!")
-		// 	return
-		// }
-		// for _, v := range message.Mentions {
-		// 	strikes, err := strikeClient.ClearStrikesForUser(message.GuildID, message.ChannelID, v.ID)
-		// 	ParseServiceResponse(session, message.ChannelID, strikes, err)
-		// }
+		if strikeClient.AuthClient.Authorize(message.GuildID, message.Author.ID, strikeCommand, "clear") {
+			if len(message.Mentions) < 1 {
+				session.ChannelMessageSend(message.ChannelID, "Please mention somone!")
+				return
+			}
+			for _, v := range message.Mentions {
+				strikes, err := strikeClient.ClearStrikesForUser(message.GuildID, message.ChannelID, v.ID)
+				ParseServiceResponse(session, message.ChannelID, strikes, err)
+			}
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "help":
 		strikeClient.Help(session, message.ChannelID)
 	default:
@@ -94,9 +99,13 @@ func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *di
 			strikeClient.Help(session, message.ChannelID)
 			return
 		}
-		for _, v := range message.Mentions {
-			strikes, err := strikeClient.StrikeUser(message.GuildID, message.ChannelID, v.ID)
-			ParseServiceResponse(session, message.ChannelID, strikes, err)
+		if strikeClient.AuthClient.Authorize(message.GuildID, message.Author.ID, strikeCommand, "") {
+			for _, v := range message.Mentions {
+				strikes, err := strikeClient.StrikeUser(message.GuildID, message.ChannelID, v.ID)
+				ParseServiceResponse(session, message.ChannelID, strikes, err)
+			}
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
 		}
 	}
 }

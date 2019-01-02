@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -78,6 +79,7 @@ func main() {
 		flamingoservice.NewStrikeClient(ddb, metricsClient),
 		flamingoservice.NewPastaClient(ddb, metricsClient),
 		flamingoservice.NewReactClient(s3, metricsClient, authClient),
+		authClient,
 	}
 	//Start Flamingo
 	err = discord.Open()
@@ -87,6 +89,7 @@ func main() {
 	}
 	flamingoLogger.Println("Authenticated")
 	discord.AddHandler(commandListener)
+	discord.AddHandler(authSetup(authClient))
 
 	// Wait here until CTRL-C or other term signal is received.
 	flamingoLogger.Println("Flamingo is now running.  Press CTRL-C to exit.")
@@ -111,6 +114,26 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				go v.Handle(session, m.Message)
 				return
 			}
+		}
+	}
+}
+
+func authSetup(authClient *flamingoservice.AuthClient) func(*discordgo.Session, *discordgo.GuildCreate) {
+	return func(session *discordgo.Session, gc *discordgo.GuildCreate) {
+		timeStamp, err := gc.JoinedAt.Parse()
+		if err != nil {
+			flamingoErrLogger.Println(err)
+			return
+		}
+		//Join time <30s is an indicator of joining recently as opposed to reconnecting
+		if timeStamp.Unix() > time.Now().Unix()-30 {
+			flamingoLogger.Printf("Joined %s. Setting permissive flag.\n", gc.Guild.ID)
+			err := authClient.SetDefaultPermissiveFlagValue(gc.Guild.ID)
+			if err != nil {
+				flamingoErrLogger.Printf("An error occured while setting permissive flag for %s", gc.Guild.ID)
+				flamingoErrLogger.Println(err)
+			}
+			authClient.SetPermission(gc.Guild.ID, gc.OwnerID, "auth", "", false, true)
 		}
 	}
 }
