@@ -40,6 +40,23 @@ Removes a permission rule for a given command and user or role
 
 ^ - XOR
 
+#### test
+Tests a permission rule for a given command and user
+
+```Usage: ~auth test command=$command *action=$action user=@user```
+						
+\* - optional argument
+
+#### permissive
+Sets the value of the permissive flag
+
+```Usage: ~auth permissive permission=$bool```
+
+#### list
+Lists the permissions rules for the guild
+
+```Usage: ~auth list```
+
 ### strike
 Issues a strike to a given user.
 

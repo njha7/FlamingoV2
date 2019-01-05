@@ -22,6 +22,7 @@ import (
 
 const (
 	authServiceName = "Auth"
+	authCommand     = "auth"
 )
 
 var (
@@ -70,7 +71,7 @@ func NewAuthClient(discordClient *discordgo.Session,
 
 // IsCommand identifies a message as a potential command
 func (authClient *AuthClient) IsCommand(message string) bool {
-	return strings.HasPrefix(message, "auth")
+	return strings.HasPrefix(message, authCommand)
 }
 
 // Handle parses a command message and performs the commanded action
@@ -85,26 +86,155 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 	//sub-commands of auth
 	switch args[0] {
 	case "set":
-		commandPermission, actionPermission, _, _, isRole, isAllowed := parseAuthCommandArgs(message.Content)
-		if isRole {
-			authClient.SetPermission(message.GuildID, message.MentionRoles[0], commandPermission, actionPermission, isRole, isAllowed)
+		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "set") {
+			var err error
+			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, isAllowed := parseAuthCommandArgs(message.Content)
+			if !validatePermissionID(userPermission, roleIDPermission) {
+				ParseServiceResponse(session, message.ChannelID, "Please specify a user or a role!", nil)
+				return
+			}
+			if isRole {
+				err = authClient.SetPermission(message.GuildID, message.MentionRoles[0], commandPermission, actionPermission, isRole, isAllowed)
+			} else {
+				err = authClient.SetPermission(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission, isRole, isAllowed)
+			}
+			ParseServiceResponse(session, message.ChannelID, "Auth rule added successfully", err)
 		} else {
-			authClient.SetPermission(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission, isRole, isAllowed)
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
 		}
 	case "delete":
-		commandPermission, actionPermission, _, _, isRole, _ := parseAuthCommandArgs(message.Content)
-		if isRole {
-			authClient.DeletePermission(message.GuildID, message.MentionRoles[0], commandPermission, actionPermission, isRole)
+		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "delete") {
+			var err error
+			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, _ := parseAuthCommandArgs(message.Content)
+			if !validatePermissionID(userPermission, roleIDPermission) {
+				ParseServiceResponse(session, message.ChannelID, "Please specify a user or a role!", nil)
+				return
+			}
+			if isRole {
+				err = authClient.DeletePermission(message.GuildID, message.MentionRoles[0], commandPermission, actionPermission, isRole)
+			} else {
+				err = authClient.DeletePermission(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission, isRole)
+			}
+			ParseServiceResponse(session, message.ChannelID, "Auth rule removed successfully", err)
 		} else {
-			authClient.DeletePermission(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission, isRole)
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
 		}
+	case "test":
+		commandPermission, actionPermission, userPermission, _, _, _ := parseAuthCommandArgs(message.Content)
+		if !validatePermissionID(userPermission, userPermission) {
+			ParseServiceResponse(session, message.ChannelID, "Please specify a user !", nil)
+			return
+		}
+		testMessage := "Unauthorized"
+		result := authClient.Authorize(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission)
+		if result {
+			testMessage = "Authorized"
+		}
+		ParseServiceResponse(session, message.ChannelID, testMessage, nil)
+	case "permissive":
+		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "permissive") {
+			_, _, _, _, _, isAllowed := parseAuthCommandArgs(message.Content)
+			err := authClient.SetPermissiveFlagValue(message.GuildID, isAllowed)
+			ParseServiceResponse(session, message.ChannelID, "Permissive flag value updated.", err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
+	case "list":
+		ParseServiceResponse(session, message.ChannelID, "Coming soon!", nil)
+		// err := authClient.ListPermissions(message.GuildID, message.ChannelID, message.Author.ID)
+		// if err != nil {
+		// 	ParseServiceResponse(session, message.ChannelID, "", err)
+		// }
 	case "help":
 		authClient.Help(session, message.ChannelID)
 	}
 }
 
+// ListPermissions lists all permissions for a guild
+// func (authClient *AuthClient) ListPermissions(guildID, channelID, userID string) error {
+// 	var guildName string
+// 	guild, err := authClient.DiscordClient.Guild(guildID)
+// 	if err != nil {
+// 		guildName = "An error occurred while retrieving server name."
+// 		authClient.AuthErrorLogger.Println(err)
+// 	} else {
+// 		guildName = guild.Name
+// 	}
+
+// 	guildRoles, err := authClient.DiscordClient.GuildRoles(guildID)
+// 	if err != nil {
+// 		authClient.AuthErrorLogger.Println(err)
+// 		return err
+// 	}
+// 	roleIDNameMap := make(map[string]string)
+// 	for _, v := range guildRoles {
+// 		roleIDNameMap[v.ID] = v.Name
+// 	}
+
+// 	dmChannel, err := authClient.DiscordClient.UserChannelCreate(userID)
+// 	if err != nil {
+// 		authClient.DiscordClient.ChannelMessageSend(channelID, "An error occured. Could not DM <@"+userID+">")
+// 		authClient.AuthErrorLogger.Println(err)
+// 		return err
+// 	}
+
+// 	err = authClient.DynamoClient.BatchGetItemPages(&dynamodb.BatchGetItemInput{
+// 		RequestItems: listAuthorizationKeys(guildID),
+// 	},
+// 		func(page *dynamodb.BatchGetItemOutput, lastPage bool) bool {
+// 			permissionsList := make([]*discordgo.MessageEmbedField, 0, 10)
+// 			for _, permission := range page.Responses[assets.AuthTableName] {
+// 				rule := &PermissionObject{}
+// 				dynamodbattribute.UnmarshalMap(permission, rule)
+// 				//guild, command ! action
+// 				ID := strings.Split(rule.Permission, "!")[1]
+// 				permissionString := "Denied"
+// 				if rule.Allow {
+// 					permissionString = "Allowed"
+// 				}
+// 				//Role-based rules
+// 				if strings.HasPrefix(rule.Permission, "role!") {
+// 					permissionsList = append(permissionsList, &discordgo.MessageEmbedField{
+// 						Name:  roleIDNameMap[ID],
+// 						Value: permissionString,
+// 					})
+// 				} else {
+// 					var userName string
+// 					member, err := authClient.DiscordClient.GuildMember(guildID, ID)
+// 					if err != nil {
+// 						userName = ID
+// 					} else {
+// 						userName = member.Nick
+// 					}
+// 					permissionsList = append(permissionsList, &discordgo.MessageEmbedField{
+// 						Name:  userName,
+// 						Value: permissionString,
+// 					})
+// 				}
+// 				authClient.DiscordClient.ChannelMessageSendEmbed(dmChannel.ID,
+// 					&discordgo.MessageEmbed{
+// 						Author: &discordgo.MessageEmbedAuthor{},
+// 						Thumbnail: &discordgo.MessageEmbedThumbnail{
+// 							URL: assets.AvatarURL,
+// 						},
+// 						Color:       0x0000ff,
+// 						Description: "It's not like I like you or a-anything, b-b-baka.",
+// 						Fields:      permissionsList,
+// 						Title:       "Permissions for " + guildName,
+// 					})
+// 			}
+// 			return !lastPage
+// 		})
+// 	if err != nil {
+// 		authClient.DiscordClient.ChannelMessageSend(dmChannel.ID, "An error occured. Please try again later.")
+// 		authClient.AuthErrorLogger.Println(err)
+// 		return nil
+// 	}
+// 	return nil
+// }
+
 // SetPermission sets the value of a permission
-func (authClient *AuthClient) SetPermission(guildID, ID, command, action string, isRole, isAllowed bool) (bool, error) {
+func (authClient *AuthClient) SetPermission(guildID, ID, command, action string, isRole, isAllowed bool) error {
 	permission := make(map[string]*dynamodb.AttributeValue)
 	if isRole {
 		permission = buildPermission(guildID, "", ID, command, action, isRole, isAllowed)
@@ -117,13 +247,12 @@ func (authClient *AuthClient) SetPermission(guildID, ID, command, action string,
 	})
 	if err != nil {
 		authClient.AuthErrorLogger.Println(err)
-		return false, err
 	}
-	return true, nil
+	return err
 }
 
 // DeletePermission deletes the records associated with a permission
-func (authClient *AuthClient) DeletePermission(guildID, ID, command, action string, isRole bool) (bool, error) {
+func (authClient *AuthClient) DeletePermission(guildID, ID, command, action string, isRole bool) error {
 	var key map[string]*dynamodb.AttributeValue
 	if isRole {
 		key = buildAuthorizationKey(guildID, "", ID, command, action, isRole)
@@ -136,9 +265,8 @@ func (authClient *AuthClient) DeletePermission(guildID, ID, command, action stri
 	})
 	if err != nil {
 		authClient.AuthErrorLogger.Println(err)
-		return false, err
 	}
-	return true, nil
+	return nil
 }
 
 //Authorize determines a user's eligibility to invoke a command
@@ -264,14 +392,14 @@ func (authClient *AuthClient) GetPermissiveFlagValue(guildID string) (bool, erro
 	return permissiveFlag.Allow, nil
 }
 
-// SetDefaultPermissiveFlagValue sets the value of the permissiveness flag to true for the first time
-func (authClient *AuthClient) SetDefaultPermissiveFlagValue(guildID string) error {
+// SetPermissiveFlagValue sets the value of the permissiveness flag to true for the first time
+func (authClient *AuthClient) SetPermissiveFlagValue(guildID string, value bool) error {
 	//Permissiveness flag defines behavior when no permissions records are found
 	//permissive=true allows treats total absence permissions records for as a record granting permission
 	//conversely, permissive=false treats a total absence as a record denying permission
 	_, err := authClient.DynamoClient.PutItem(&dynamodb.PutItemInput{
 		TableName:           aws.String(assets.AuthTableName),
-		Item:                buildPermission(guildID, "", "", "", "", false, true),
+		Item:                buildPermission(guildID, "", "", "", "", false, value),
 		ConditionExpression: aws.String("attribute_not_exists(guild) and attribute_not_exists(perm)"),
 	})
 	if err != nil {
@@ -316,6 +444,22 @@ func (authClient *AuthClient) Help(session *discordgo.Session, channelID string)
 						"* - optional argument\n" +
 						"^ - XOR",
 				},
+				&discordgo.MessageEmbedField{
+					Name: "permissive",
+					Value: "Sets the value of the permissive flag\n" +
+						"Usage: ~auth permissive permission=$bool\n",
+				},
+				&discordgo.MessageEmbedField{
+					Name: "test",
+					Value: "Tests a permission rule for a given command and user or role\n" +
+						"Usage: ~auth delete command=$command *action=$action user=@user\n" +
+						"* - optional argument\n",
+				},
+				&discordgo.MessageEmbedField{
+					Name: "list",
+					Value: "Lists all the permissions rules for the guild\n" +
+						"Usage: ~auth list",
+				},
 			},
 		})
 }
@@ -357,6 +501,25 @@ func evaluatePermissions(permissions map[string]bool, command, action string) *b
 		return &commandPermission
 	}
 	return hasPermission
+}
+
+func listAuthorizationKeys(guildID string) map[string]*dynamodb.KeysAndAttributes {
+	keysAndAttributes := map[string]*dynamodb.KeysAndAttributes{
+		assets.AuthTableName: &dynamodb.KeysAndAttributes{},
+	}
+	keys := make([]map[string]*dynamodb.AttributeValue, 0, 10)
+	for k, v := range Commands {
+		key := make(map[string]*dynamodb.AttributeValue)
+		key["guild"] = &dynamodb.AttributeValue{S: aws.String(guildID + "!" + k + "!")}
+		keys = append(keys, key)
+		for _, action := range v {
+			key := make(map[string]*dynamodb.AttributeValue)
+			key["guild"] = &dynamodb.AttributeValue{S: aws.String(guildID + "!" + k + "!" + action)}
+			keys = append(keys, key)
+		}
+	}
+	keysAndAttributes[assets.AuthTableName].SetKeys(keys[:len(keys)])
+	return keysAndAttributes
 }
 
 func buildAuthorizationKeys(guildID, userID, command, action string, roleIDList []string) map[string]*dynamodb.KeysAndAttributes {
@@ -404,4 +567,8 @@ func buildPermission(guildID, userID, roleID, command, action string, isRole, is
 		Allow:      isAllowed,
 	})
 	return permission
+}
+
+func validatePermissionID(userID, roleID string) bool {
+	return !(userID == "" && roleID == "")
 }

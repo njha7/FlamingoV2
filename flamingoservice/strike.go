@@ -91,6 +91,20 @@ func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *di
 		} else {
 			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
 		}
+	case "super":
+		if len(message.Mentions) < 1 {
+			session.ChannelMessageSend(message.ChannelID, "You must mention someone to strike!")
+			strikeClient.Help(session, message.ChannelID)
+			return
+		}
+		if strikeClient.AuthClient.Authorize(message.GuildID, message.Author.ID, strikeCommand, "super") {
+			for _, v := range message.Mentions {
+				strikes, err := strikeClient.SuperStrikeUser(message.GuildID, message.ChannelID, v.ID)
+				ParseServiceResponse(session, message.ChannelID, strikes, err)
+			}
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "help":
 		strikeClient.Help(session, message.ChannelID)
 	default:
@@ -117,6 +131,27 @@ func (strikeClient *StrikeClient) StrikeUser(guildID, channelID, userID string) 
 		Key:                       buildStrikeKey(guildID, userID),
 		UpdateExpression:          aws.String("ADD strikes :s"),
 		ExpressionAttributeValues: buildStrikeUpdateExpression(1),
+		ReturnValues:              aws.String("UPDATED_NEW"),
+	})
+	if err != nil {
+		strikeClient.StrikeErrorLogger.Println(err)
+		return "", nil
+	}
+	strikeCount, ok := result.Attributes["strikes"]
+	if ok {
+		return "<@" + userID + "> has " + *strikeCount.N + " strikes.", nil
+	}
+	strikeClient.StrikeErrorLogger.Printf("strike attribute not found after update guildID=%s userID=%s", guildID, userID)
+	return "", errors.New("strike attribute not found after update")
+}
+
+// SuperStrikeUser adds 10 to the strike count of a user
+func (strikeClient *StrikeClient) SuperStrikeUser(guildID, channelID, userID string) (string, error) {
+	result, err := strikeClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:                 aws.String(assets.StrikeTableName),
+		Key:                       buildStrikeKey(guildID, userID),
+		UpdateExpression:          aws.String("ADD strikes :s"),
+		ExpressionAttributeValues: buildStrikeUpdateExpression(10),
 		ReturnValues:              aws.String("UPDATED_NEW"),
 	})
 	if err != nil {

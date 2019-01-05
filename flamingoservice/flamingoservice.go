@@ -12,10 +12,10 @@ const (
 var (
 	// Commands is the source of truth for all available commands and command actions
 	Commands = map[string][]string{
-		"strike": {"", "get", "clear"},
-		"pasta":  {"get", "save", "edit", "list"},
-		"react":  {"get", "save", "delete", "list"},
-		"auth":   {},
+		"strike": {"", "super", "get", "clear", "help"},
+		"pasta":  {"get", "save", "edit", "list", "help"},
+		"react":  {"get", "save", "delete", "list", "help"},
+		"auth":   {"set", "delete", "test", "permissive", "list", "help"},
 	}
 )
 
@@ -26,18 +26,33 @@ type FlamingoService interface {
 	Handle(session *discordgo.Session, message *discordgo.Message)
 }
 
+// BooleanCommandSuccess is a wrapper for the return value of commands that return a boolean
+type BooleanCommandSuccess struct {
+	Command *discordgo.Message
+	Result  bool
+}
+
 // ParseServiceResponse is a helper to remove some repetitive error handling boilerplate from code.
 func ParseServiceResponse(session *discordgo.Session, channelID string, response interface{}, err error) {
 	if err != nil {
 		session.ChannelMessageSend(channelID, "An error occured. Please try again later.")
 	} else {
 		stringResponse, isString := response.(string)
+		boolResponse, isBool := response.(BooleanCommandSuccess)
 		embedResponse, isMessageEmbed := response.(*discordgo.MessageEmbed)
 		if isString {
 			session.ChannelMessageSend(channelID, stringResponse)
 		}
 		if isMessageEmbed {
 			session.ChannelMessageSendEmbed(channelID, embedResponse)
+		}
+		if isBool {
+			if boolResponse.Result {
+				session.MessageReactionAdd(boolResponse.Command.ChannelID, boolResponse.Command.ID, "check")
+			} else {
+				session.MessageReactionAdd(boolResponse.Command.ChannelID, boolResponse.Command.ID, "X")
+			}
+
 		}
 	}
 }

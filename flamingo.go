@@ -76,8 +76,8 @@ func main() {
 	authClient := flamingoservice.NewAuthClient(discord, ddb, metricsClient)
 
 	commandServices = []flamingoservice.FlamingoService{
-		flamingoservice.NewStrikeClient(ddb, metricsClient),
-		flamingoservice.NewPastaClient(ddb, metricsClient),
+		flamingoservice.NewStrikeClient(ddb, metricsClient, authClient),
+		flamingoservice.NewPastaClient(ddb, metricsClient, authClient),
 		flamingoservice.NewReactClient(s3, metricsClient, authClient),
 		authClient,
 	}
@@ -128,7 +128,7 @@ func authSetup(authClient *flamingoservice.AuthClient) func(*discordgo.Session, 
 		//Join time <30s is an indicator of joining recently as opposed to reconnecting
 		if timeStamp.Unix() > time.Now().Unix()-30 {
 			flamingoLogger.Printf("Joined %s. Setting permissive flag.\n", gc.Guild.ID)
-			err := authClient.SetDefaultPermissiveFlagValue(gc.Guild.ID)
+			err := authClient.SetPermissiveFlagValue(gc.Guild.ID, true)
 			if err != nil {
 				flamingoErrLogger.Printf("An error occured while setting permissive flag for %s", gc.Guild.ID)
 				flamingoErrLogger.Println(err)
