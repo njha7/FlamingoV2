@@ -27,7 +27,7 @@ const (
 var (
 	command, _         = regexp.Compile(`command=\w*`)
 	action, _          = regexp.Compile(`action=\w*`)
-	user, _            = regexp.Compile(`user=\s?\<\@![\d]*\>`)
+	user, _            = regexp.Compile(`user=\s?\<\@\!?[\d]*\>`)
 	role, _            = regexp.Compile(`role=\s?\<\@\&[\d]*\>`)
 	permissionValue, _ = regexp.Compile(`permission=(true|false)`)
 )
