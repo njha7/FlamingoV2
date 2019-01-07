@@ -7,10 +7,12 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
@@ -65,11 +67,19 @@ func main() {
 	ddb := dynamodb.New(awsSess, aws.NewConfig().WithRegion(REGION))
 	// Create S3 service client with a specific Region.
 	s3 := s3.New(awsSess, aws.NewConfig().WithRegion(REGION))
+	cw := cloudwatch.New(awsSess, aws.NewConfig().WithRegion(REGION))
 	//Flamingo service Client construction
+	metricsClient := &flamingolog.FlamingoMetricsClient{
+		CloudWatchAgent: cw,
+		Local:           local,
+	}
+	authClient := flamingoservice.NewAuthClient(discord, ddb, metricsClient)
+
 	commandServices = []flamingoservice.FlamingoService{
-		flamingoservice.NewStrikeClient(ddb),
-		flamingoservice.NewPastaClient(ddb),
-		flamingoservice.NewReactClient(s3),
+		flamingoservice.NewStrikeClient(ddb, metricsClient, authClient),
+		flamingoservice.NewPastaClient(ddb, metricsClient, authClient),
+		flamingoservice.NewReactClient(s3, metricsClient, authClient),
+		authClient,
 	}
 	//Start Flamingo
 	err = discord.Open()
@@ -79,6 +89,7 @@ func main() {
 	}
 	flamingoLogger.Println("Authenticated")
 	discord.AddHandler(commandListener)
+	discord.AddHandler(authSetup(authClient))
 
 	// Wait here until CTRL-C or other term signal is received.
 	flamingoLogger.Println("Flamingo is now running.  Press CTRL-C to exit.")
@@ -103,6 +114,26 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				go v.Handle(session, m.Message)
 				return
 			}
+		}
+	}
+}
+
+func authSetup(authClient *flamingoservice.AuthClient) func(*discordgo.Session, *discordgo.GuildCreate) {
+	return func(session *discordgo.Session, gc *discordgo.GuildCreate) {
+		timeStamp, err := gc.JoinedAt.Parse()
+		if err != nil {
+			flamingoErrLogger.Println(err)
+			return
+		}
+		//Join time <30s is an indicator of joining recently as opposed to reconnecting
+		if timeStamp.Unix() > time.Now().Unix()-30 {
+			flamingoLogger.Printf("Joined %s. Setting permissive flag.\n", gc.Guild.ID)
+			err := authClient.SetPermissiveFlagValue(gc.Guild.ID, true)
+			if err != nil {
+				flamingoErrLogger.Printf("An error occured while setting permissive flag for %s", gc.Guild.ID)
+				flamingoErrLogger.Println(err)
+			}
+			authClient.SetPermission(gc.Guild.ID, gc.OwnerID, "auth", "", false, true)
 		}
 	}
 }

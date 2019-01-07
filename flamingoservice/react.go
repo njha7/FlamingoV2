@@ -20,19 +20,24 @@ import (
 
 const (
 	reactServiceName = "React"
+	reactCommand     = "react"
 )
 
 // ReactClient is responsible for handling "react" commands
 type ReactClient struct {
 	S3Client           *s3.S3
+	MetricsClient      *flamingolog.FlamingoMetricsClient
+	AuthClient         *AuthClient
 	ReactServiceLogger *log.Logger
 	ReactErrorLogger   *log.Logger
 }
 
 // NewReactClient constructs a ReactClient
-func NewReactClient(s3Client *s3.S3) *ReactClient {
+func NewReactClient(s3Client *s3.S3, metricsClient *flamingolog.FlamingoMetricsClient, authClient *AuthClient) *ReactClient {
 	return &ReactClient{
 		S3Client:           s3Client,
+		MetricsClient:      metricsClient,
+		AuthClient:         authClient,
 		ReactServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
 		ReactErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}
@@ -40,7 +45,7 @@ func NewReactClient(s3Client *s3.S3) *ReactClient {
 
 // IsCommand identifies a message as a potential command
 func (reactClient *ReactClient) IsCommand(message string) bool {
-	return strings.HasPrefix(message, "react")
+	return strings.HasPrefix(message, reactCommand)
 }
 
 // Handle parses a command message and performs the commanded action
@@ -58,22 +63,34 @@ func (reactClient *ReactClient) Handle(session *discordgo.Session, message *disc
 			session.ChannelMessageSend(message.ChannelID, "Please specify an alias.")
 			return
 		}
-		reaction, err := reactClient.GetReaction(message.ChannelID, message.Author.ID, args[1])
-		ParseServiceResponse(session, message.ChannelID, reaction, err)
+		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, reactCommand, "get") {
+			reaction, err := reactClient.GetReaction(message.ChannelID, message.Author.ID, args[1])
+			ParseServiceResponse(session, message.ChannelID, reaction, err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "save":
 		if len(args) < 2 || len(message.Attachments) < 1 {
 			session.ChannelMessageSend(message.ChannelID, "Please upload an image or specify an alias.")
 			return
 		}
-		_, err := reactClient.PutReaction(message.ChannelID, message.Author.ID, args[1], message.Attachments[0].URL)
-		ParseServiceResponse(session, message.ChannelID, "Reaction with alias "+args[1]+" saved.", err)
+		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, reactCommand, "save") {
+			_, err := reactClient.PutReaction(message.ChannelID, message.Author.ID, args[1], message.Attachments[0].URL)
+			ParseServiceResponse(session, message.ChannelID, "Reaction with alias "+args[1]+" saved.", err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "delete":
 		if len(args) < 2 {
 			session.ChannelMessageSend(message.ChannelID, "Please specify an alias.")
 			return
 		}
-		result, err := reactClient.DeleteReaction(message.ChannelID, message.Author.ID, args[1])
-		ParseServiceResponse(session, message.ChannelID, result, err)
+		if reactClient.AuthClient.Authorize(message.GuildID, message.Author.ID, reactCommand, "delete") {
+			result, err := reactClient.DeleteReaction(message.ChannelID, message.Author.ID, args[1])
+			ParseServiceResponse(session, message.ChannelID, result, err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "list":
 		reactClient.ListReactions(session, message.ChannelID, message.Author.ID)
 	case "help":
@@ -105,7 +122,7 @@ func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string
 	dx := uint(x * reszieRatio)
 	dy := uint(y * reszieRatio)
 
-	image = resize.Resize(dx, dy, image, resize.NearestNeighbor)
+	image = resize.Resize(dx, dy, image, resize.Bicubic)
 
 	buffer := new(bytes.Buffer)
 	err = png.Encode(buffer, image)
@@ -127,7 +144,6 @@ func (reactClient *ReactClient) PutReaction(channelID, userID, alias, url string
 		return false, err
 	}
 	return true, nil
-	// reactClient.DiscordSession.ChannelMessageSend(channelID, alias+" reaction saved.")
 }
 
 // GetReaction retrieves a reaction by alias and returns the url
@@ -223,17 +239,14 @@ func (reactClient *ReactClient) ListReactions(session *discordgo.Session, channe
 				&discordgo.MessageEmbed{
 					Author: &discordgo.MessageEmbedAuthor{},
 					Thumbnail: &discordgo.MessageEmbedThumbnail{
-						URL: "https://cdn.discordapp.com/avatars/518879406509391878/ca293c592d560f09d958e85166938e88.png?size=256",
+						URL: assets.AvatarURL,
 					},
 					Color:       0x0000ff,
 					Description: "A list of your reactions",
 					Fields:      reactionList[:len(reactionList)],
 					Title:       "Your reactions",
 				})
-			if lastPage {
-				return false
-			}
-			return true
+			return !lastPage
 		})
 }
 

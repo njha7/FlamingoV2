@@ -3,7 +3,59 @@
 ## About
 This is FlamingoV2. It is the successor to [Flamingo](https://github.com/njha7/Flamingo). It is a [Discord](https://discordapp.com) bot with no intrinsic value. It's purely for the [memes](https://www.youtube.com/watch?v=P9ibDqbfPdY).
 
+## Permissions
+Flamingo has the ability to restrict access to commands for users. Permissions can be set by role or user directly. 
+
+Permissions are evaluated as follows:
+
+1. User permissions for the command + action
+2. User permissions for the command
+3. Role permissions for the command + action
+4. Role permissions for the command
+
+A command is the archetype of action a user is trying to perform (e.g. pasta) and an action is the exact action (e.g. get).
+
+The first permission rule found using the above order determines a user's permission to execute a given command. Steps 3 and 4 are evaluated for each role in descending guild position. If no rules are found, Flamingo returns the value of the permissive flag for the guild. The permissive flag is set to true when Flamingo joins a guild. A true value treats absent permissons records (as opposed to an explicit allow or deny record) as the equivalent of a present allow. A false value treats absent permissions records as the equivalent of a present deny. The auth command is excluded from this paradigm. Auth requires explicit permission to invoke. By default, only the server owner has this permission. 
+
 ## Commands
+
+### auth
+Auth commands are used to set permissions.
+
+#### set
+Sets the value of a permission rule for a given command and user or role
+
+```Usage: ~auth set command=$command *action=$action ^user=@user ^role=@role permission=$bool```
+						
+\* - optional argument
+
+^ - XOR
+
+#### delete
+Removes a permission rule for a given command and user or role
+
+```Usage: ~auth delete command=$command *action=$action ^user=@user ^role=@role permission=$bool```
+						
+\* - optional argument
+
+^ - XOR
+
+#### test
+Tests a permission rule for a given command and user
+
+```Usage: ~auth test command=$command *action=$action user=@user```
+						
+\* - optional argument
+
+#### permissive
+Sets the value of the permissive flag
+
+```Usage: ~auth permissive permission=$bool```
+
+#### list
+Lists the permissions rules for the guild
+
+```Usage: ~auth list```
 
 ### strike
 Issues a strike to a given user.

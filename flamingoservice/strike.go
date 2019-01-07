@@ -2,7 +2,6 @@ package flamingoservice
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -18,11 +17,14 @@ import (
 
 const (
 	strikeServiceName = "Strike"
+	strikeCommand     = "strike"
 )
 
 // StrikeClient is responsible for handling "strike" commands
 type StrikeClient struct {
 	DynamoClient        *dynamodb.DynamoDB
+	MetricsClient       *flamingolog.FlamingoMetricsClient
+	AuthClient          *AuthClient
 	StrikeServiceLogger *log.Logger
 	StrikeErrorLogger   *log.Logger
 }
@@ -33,15 +35,17 @@ type Strike struct {
 	Strikes int    `dynamodbav:"strikes"`
 }
 
-// StrikeKey is a convenience struct for marshaling Go types into a key for DDB requests for a given user
+// StrikeKey is a convenience struct for marshalling Go types into a key for DDB requests for a given user
 type StrikeKey struct {
 	ID string `dynamodbav:"guild!user"`
 }
 
 // NewStrikeClient constructs a StrikeClient
-func NewStrikeClient(dynamoClient *dynamodb.DynamoDB) *StrikeClient {
+func NewStrikeClient(dynamoClient *dynamodb.DynamoDB, metricsClient *flamingolog.FlamingoMetricsClient, authClient *AuthClient) *StrikeClient {
 	return &StrikeClient{
 		DynamoClient:        dynamoClient,
+		MetricsClient:       metricsClient,
+		AuthClient:          authClient,
 		StrikeServiceLogger: flamingolog.BuildServiceLogger(strikeServiceName),
 		StrikeErrorLogger:   flamingolog.BuildServiceErrorLogger(strikeServiceName),
 	}
@@ -49,14 +53,13 @@ func NewStrikeClient(dynamoClient *dynamodb.DynamoDB) *StrikeClient {
 
 // IsCommand identifies a message as a potential command
 func (strikeClient *StrikeClient) IsCommand(message string) bool {
-	return strings.HasPrefix(message, "strike")
+	return strings.HasPrefix(message, strikeCommand)
 }
 
 // Handle parses a command message and performs the commanded action
 func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *discordgo.Message) {
 	//first word is always "strike", safe to remove
 	args := strings.SplitN(message.Content, " ", 3)[1:]
-	fmt.Println(args)
 	if len(args) < 1 {
 		strikeClient.Help(session, message.ChannelID)
 		return
@@ -76,16 +79,32 @@ func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *di
 		}
 
 	case "clear":
-		// Command disabled for now
-		ParseServiceResponse(session, message.ChannelID, "strike clear has been disabled temporarily", nil)
-		// if len(message.Mentions) < 1 {
-		// 	session.ChannelMessageSend(message.ChannelID, "Please mention somone!")
-		// 	return
-		// }
-		// for _, v := range message.Mentions {
-		// 	strikes, err := strikeClient.ClearStrikesForUser(message.GuildID, message.ChannelID, v.ID)
-		// 	ParseServiceResponse(session, message.ChannelID, strikes, err)
-		// }
+		if strikeClient.AuthClient.Authorize(message.GuildID, message.Author.ID, strikeCommand, "clear") {
+			if len(message.Mentions) < 1 {
+				session.ChannelMessageSend(message.ChannelID, "Please mention somone!")
+				return
+			}
+			for _, v := range message.Mentions {
+				strikes, err := strikeClient.ClearStrikesForUser(message.GuildID, message.ChannelID, v.ID)
+				ParseServiceResponse(session, message.ChannelID, strikes, err)
+			}
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
+	case "super":
+		if len(message.Mentions) < 1 {
+			session.ChannelMessageSend(message.ChannelID, "You must mention someone to strike!")
+			strikeClient.Help(session, message.ChannelID)
+			return
+		}
+		if strikeClient.AuthClient.Authorize(message.GuildID, message.Author.ID, strikeCommand, "super") {
+			for _, v := range message.Mentions {
+				strikes, err := strikeClient.SuperStrikeUser(message.GuildID, message.ChannelID, v.ID)
+				ParseServiceResponse(session, message.ChannelID, strikes, err)
+			}
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "help":
 		strikeClient.Help(session, message.ChannelID)
 	default:
@@ -94,9 +113,13 @@ func (strikeClient *StrikeClient) Handle(session *discordgo.Session, message *di
 			strikeClient.Help(session, message.ChannelID)
 			return
 		}
-		for _, v := range message.Mentions {
-			strikes, err := strikeClient.StrikeUser(message.GuildID, message.ChannelID, v.ID)
-			ParseServiceResponse(session, message.ChannelID, strikes, err)
+		if strikeClient.AuthClient.Authorize(message.GuildID, message.Author.ID, strikeCommand, "") {
+			for _, v := range message.Mentions {
+				strikes, err := strikeClient.StrikeUser(message.GuildID, message.ChannelID, v.ID)
+				ParseServiceResponse(session, message.ChannelID, strikes, err)
+			}
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
 		}
 	}
 }
@@ -108,6 +131,27 @@ func (strikeClient *StrikeClient) StrikeUser(guildID, channelID, userID string) 
 		Key:                       buildStrikeKey(guildID, userID),
 		UpdateExpression:          aws.String("ADD strikes :s"),
 		ExpressionAttributeValues: buildStrikeUpdateExpression(1),
+		ReturnValues:              aws.String("UPDATED_NEW"),
+	})
+	if err != nil {
+		strikeClient.StrikeErrorLogger.Println(err)
+		return "", nil
+	}
+	strikeCount, ok := result.Attributes["strikes"]
+	if ok {
+		return "<@" + userID + "> has " + *strikeCount.N + " strikes.", nil
+	}
+	strikeClient.StrikeErrorLogger.Printf("strike attribute not found after update guildID=%s userID=%s", guildID, userID)
+	return "", errors.New("strike attribute not found after update")
+}
+
+// SuperStrikeUser adds 10 to the strike count of a user
+func (strikeClient *StrikeClient) SuperStrikeUser(guildID, channelID, userID string) (string, error) {
+	result, err := strikeClient.DynamoClient.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:                 aws.String(assets.StrikeTableName),
+		Key:                       buildStrikeKey(guildID, userID),
+		UpdateExpression:          aws.String("ADD strikes :s"),
+		ExpressionAttributeValues: buildStrikeUpdateExpression(10),
 		ReturnValues:              aws.String("UPDATED_NEW"),
 	})
 	if err != nil {

@@ -15,11 +15,14 @@ import (
 
 const (
 	pastaServiceName = "Pasta"
+	pastaCommand     = "pasta"
 )
 
 // PastaClient is responsible for handling "pasta" commands
 type PastaClient struct {
 	DynamoClient       *dynamodb.DynamoDB
+	MetricsClient      *flamingolog.FlamingoMetricsClient
+	AuthClient         *AuthClient
 	PastaServiceLogger *log.Logger
 	PastaErrorLogger   *log.Logger
 }
@@ -39,9 +42,11 @@ type PastaKey struct {
 }
 
 // NewPastaClient constructs a PastaClient
-func NewPastaClient(dynamoClient *dynamodb.DynamoDB) *PastaClient {
+func NewPastaClient(dynamoClient *dynamodb.DynamoDB, metricsClient *flamingolog.FlamingoMetricsClient, authClient *AuthClient) *PastaClient {
 	return &PastaClient{
 		DynamoClient:       dynamoClient,
+		MetricsClient:      metricsClient,
+		AuthClient:         authClient,
 		PastaServiceLogger: flamingolog.BuildServiceLogger(pastaServiceName),
 		PastaErrorLogger:   flamingolog.BuildServiceErrorLogger(pastaServiceName),
 	}
@@ -49,7 +54,7 @@ func NewPastaClient(dynamoClient *dynamodb.DynamoDB) *PastaClient {
 
 // IsCommand identifies a message as a potential command
 func (pastaClient *PastaClient) IsCommand(message string) bool {
-	return strings.HasPrefix(message, "pasta")
+	return strings.HasPrefix(message, pastaCommand)
 }
 
 // Handle parses a command message and performs the commanded action
@@ -67,18 +72,26 @@ func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *disc
 			session.ChannelMessageSend(message.ChannelID, "Please specify a copypasta to get!")
 			return
 		}
-		pasta, err := pastaClient.GetPasta(message.GuildID, args[1])
-		ParseServiceResponse(session, message.ChannelID, pasta, err)
+		if pastaClient.AuthClient.Authorize(message.GuildID, message.Author.ID, pastaCommand, "get") {
+			pasta, err := pastaClient.GetPasta(message.GuildID, args[1])
+			ParseServiceResponse(session, message.ChannelID, pasta, err)
+		} else {
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
+		}
 	case "save":
 		if len(args) < 3 {
 			session.ChannelMessageSend(message.ChannelID, "Please specify a copypasta or an alias!")
 			return
 		}
-		result, err := pastaClient.SavePasta(message.GuildID, message.Author.ID, args[1], args[2])
-		if result {
-			ParseServiceResponse(session, message.ChannelID, "Copypasta with alias "+args[1]+" saved.", err)
+		if pastaClient.AuthClient.Authorize(message.GuildID, message.Author.ID, pastaCommand, "save") {
+			result, err := pastaClient.SavePasta(message.GuildID, message.Author.ID, args[1], args[2])
+			if result {
+				ParseServiceResponse(session, message.ChannelID, "Copypasta with alias "+args[1]+" saved.", err)
+			} else {
+				ParseServiceResponse(session, message.ChannelID, "Copypasta with alias "+args[1]+" already exists.", err)
+			}
 		} else {
-			ParseServiceResponse(session, message.ChannelID, "Copypasta with alias "+args[1]+" already exists.", err)
+			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
 		}
 	case "edit":
 		if len(args) < 3 {
@@ -221,10 +234,7 @@ func (pastaClient *PastaClient) ListPasta(session *discordgo.Session, guildID, c
 					Fields:      guildPastaList,
 					Title:       "Copypastas in " + guildName,
 				})
-			if lastPage {
-				return false
-			}
-			return true
+			return !lastPage
 		})
 	if err != nil {
 		session.ChannelMessageSend(dmChannel.ID, "An error occured. Please try again later.")
