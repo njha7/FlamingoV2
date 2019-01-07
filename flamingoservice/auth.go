@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 
 	"github.com/njha7/FlamingoV2/assets"
@@ -82,7 +81,6 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 		authClient.Help(session, message.ChannelID)
 		return
 	}
-	authClient.AuthServiceLogger.Println(message.Content)
 	//sub-commands of auth
 	switch args[0] {
 	case "set":
@@ -398,20 +396,10 @@ func (authClient *AuthClient) SetPermissiveFlagValue(guildID string, value bool)
 	//permissive=true allows treats total absence permissions records for as a record granting permission
 	//conversely, permissive=false treats a total absence as a record denying permission
 	_, err := authClient.DynamoClient.PutItem(&dynamodb.PutItemInput{
-		TableName:           aws.String(assets.AuthTableName),
-		Item:                buildPermission(guildID, "", "", "", "", false, value),
-		ConditionExpression: aws.String("attribute_not_exists(guild) and attribute_not_exists(perm)"),
+		TableName: aws.String(assets.AuthTableName),
+		Item:      buildPermission(guildID, "", "", "", "", false, value),
 	})
 	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			switch awsErr.Code() {
-			case dynamodb.ErrCodeConditionalCheckFailedException:
-				return nil
-			default:
-				authClient.AuthErrorLogger.Println(err)
-				return err
-			}
-		}
 		authClient.AuthErrorLogger.Println(err)
 		return err
 	}
