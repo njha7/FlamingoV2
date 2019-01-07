@@ -25,7 +25,7 @@ Auth commands are used to set permissions.
 #### set
 Sets the value of a permission rule for a given command and user or role
 
-```Usage: ~auth set command=$command *action=$action ^user=@user ^role=@role permission=$bool```
+```Usage: ~auth set command=$command *action=$action ^user=@user ^role=@role ^roleName="roleName" permission=$bool```
 						
 \* - optional argument
 
@@ -34,7 +34,7 @@ Sets the value of a permission rule for a given command and user or role
 #### delete
 Removes a permission rule for a given command and user or role
 
-```Usage: ~auth delete command=$command *action=$action ^user=@user ^role=@role permission=$bool```
+```Usage: ~auth delete command=$command *action=$action ^user=@user ^role=@role ^roleName="roleName" permission=$bool```
 						
 \* - optional argument
 

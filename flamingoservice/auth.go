@@ -2,6 +2,7 @@ package flamingoservice
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"regexp"
 	"sort"
@@ -29,6 +30,7 @@ var (
 	action, _          = regexp.Compile(`action=\w*`)
 	user, _            = regexp.Compile(`user=\s?\<\@\!?[\d]*\>`)
 	role, _            = regexp.Compile(`role=\s?\<\@\&[\d]*\>`)
+	roleName, _        = regexp.Compile(`roleName=".*"`)
 	permissionValue, _ = regexp.Compile(`permission=(true|false)`)
 )
 
@@ -81,12 +83,13 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 		authClient.Help(session, message.ChannelID)
 		return
 	}
+	fmt.Println(message.Content)
 	//sub-commands of auth
 	switch args[0] {
 	case "set":
 		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "set") {
 			var err error
-			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, isAllowed := parseAuthCommandArgs(message.Content)
+			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, isAllowed := parseAuthCommandArgs(session, message)
 			if !validatePermissionID(userPermission, roleIDPermission) {
 				ParseServiceResponse(session, message.ChannelID, "Please specify a user or a role!", nil)
 				return
@@ -103,7 +106,7 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 	case "delete":
 		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "delete") {
 			var err error
-			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, _ := parseAuthCommandArgs(message.Content)
+			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, _ := parseAuthCommandArgs(session, message)
 			if !validatePermissionID(userPermission, roleIDPermission) {
 				ParseServiceResponse(session, message.ChannelID, "Please specify a user or a role!", nil)
 				return
@@ -118,7 +121,7 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
 		}
 	case "test":
-		commandPermission, actionPermission, userPermission, _, _, _ := parseAuthCommandArgs(message.Content)
+		commandPermission, actionPermission, userPermission, _, _, _ := parseAuthCommandArgs(session, message)
 		if !validatePermissionID(userPermission, userPermission) {
 			ParseServiceResponse(session, message.ChannelID, "Please specify a user !", nil)
 			return
@@ -131,7 +134,7 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 		ParseServiceResponse(session, message.ChannelID, testMessage, nil)
 	case "permissive":
 		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "permissive") {
-			_, _, _, _, _, isAllowed := parseAuthCommandArgs(message.Content)
+			_, _, _, _, _, isAllowed := parseAuthCommandArgs(session, message)
 			err := authClient.SetPermissiveFlagValue(message.GuildID, isAllowed)
 			ParseServiceResponse(session, message.ChannelID, "Permissive flag value updated.", err)
 		} else {
@@ -421,14 +424,14 @@ func (authClient *AuthClient) Help(session *discordgo.Session, channelID string)
 				&discordgo.MessageEmbedField{
 					Name: "set",
 					Value: "Creates a permission rule for a given command and user or role\n" +
-						"Usage: ~auth set command=$command *action=$action ^user=@user ^role=@role permission=$bool\n" +
+						"Usage: ~auth set command=$command *action=$action ^user=@user ^role=@role ^roleName=\"roleName\" permission=$bool\n" +
 						"* - optional argument\n" +
 						"^ - XOR",
 				},
 				&discordgo.MessageEmbedField{
 					Name: "delete",
 					Value: "Deletes a permission rule for a given command and user or role\n" +
-						"Usage: ~auth delete command=$command *action=$action ^user=@user ^role=@role permission=$bool\n" +
+						"Usage: ~auth delete command=$command *action=$action ^user=@user ^role=@role ^roleName=\"roleName\" permission=$bool\n" +
 						"* - optional argument\n" +
 						"^ - XOR",
 				},
@@ -452,13 +455,14 @@ func (authClient *AuthClient) Help(session *discordgo.Session, channelID string)
 		})
 }
 
-func parseAuthCommandArgs(message string) (commandPermission, actionPermission, userPermission, roleIDPermission string, isRole, isAllowed bool) {
-	commandPermission = command.FindString(message)
-	actionPermission = action.FindString(message)
-	userPermission = user.FindString(message)
-	roleIDPermission = role.FindString(message)
+func parseAuthCommandArgs(discordClient *discordgo.Session, message *discordgo.Message) (commandPermission, actionPermission, userPermission, roleIDPermission string, isRole, isAllowed bool) {
+	commandPermission = command.FindString(message.Content)
+	actionPermission = action.FindString(message.Content)
+	userPermission = user.FindString(message.Content)
+	roleIDPermission = role.FindString(message.Content)
+	roleNamePermission := roleName.FindString(message.Content)
 	isRole = false
-	switch permissionValue.FindString(message) {
+	switch permissionValue.FindString(message.Content) {
 	case "permission=true":
 		isAllowed = true
 	case "permission=false":
@@ -474,6 +478,21 @@ func parseAuthCommandArgs(message string) (commandPermission, actionPermission, 
 	}
 	if userPermission == "" {
 		isRole = true
+	}
+	if roleNamePermission != "" && roleIDPermission == "" {
+		name := strings.SplitN(roleNamePermission, "=", 2)[1]
+		name = name[1 : len(name)-1]
+		roles, err := discordClient.GuildRoles(message.GuildID)
+		if err != nil {
+			return
+		}
+		for _, role := range roles {
+			if role.Name == name {
+				roleIDPermission = role.ID
+				message.MentionRoles = append(message.MentionRoles, roleIDPermission)
+				return
+			}
+		}
 	}
 	return
 }
