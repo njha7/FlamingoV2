@@ -2,7 +2,6 @@ package flamingoservice
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"regexp"
 	"sort"
@@ -83,7 +82,6 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 		authClient.Help(session, message.ChannelID)
 		return
 	}
-	fmt.Println(message.Content)
 	//sub-commands of auth
 	switch args[0] {
 	case "set":
@@ -123,7 +121,7 @@ func (authClient *AuthClient) Handle(session *discordgo.Session, message *discor
 	case "test":
 		commandPermission, actionPermission, userPermission, _, _, _ := parseAuthCommandArgs(session, message)
 		if !validatePermissionID(userPermission, userPermission) {
-			ParseServiceResponse(session, message.ChannelID, "Please specify a user !", nil)
+			ParseServiceResponse(session, message.ChannelID, "Please specify a user!", nil)
 			return
 		}
 		testMessage := "Unauthorized"
@@ -538,11 +536,14 @@ func buildAuthorizationKeys(guildID, userID, command, action string, roleIDList 
 	//Construct keys for roles
 	for _, role := range roleIDList {
 		keys = append(keys, buildAuthorizationKey(guildID, userID, role, command, action, true))
-		keys = append(keys, buildAuthorizationKey(guildID, userID, role, command, "", true))
+		if action != "" {
+			keys = append(keys, buildAuthorizationKey(guildID, userID, role, command, "", true))
+			keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, "", false))
+		}
 	}
 	//Add key for userID
 	keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, action, false))
-	keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, "", false))
+
 	keysAndAttributes[assets.AuthTableName].SetKeys(keys[:len(keys)])
 	return keysAndAttributes
 }
