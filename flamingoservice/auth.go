@@ -2,6 +2,7 @@ package flamingoservice
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"regexp"
 	"sort"
@@ -271,6 +272,7 @@ func (authClient *AuthClient) DeletePermission(guildID, ID, command, action stri
 //Authorize determines a user's eligibility to invoke a command
 // returns true if authorized, false otherwise
 func (authClient *AuthClient) Authorize(guildID, userID, command, action string) bool {
+	fmt.Printf("guildID:%s userID:%s, command:%s, action:%s\n", guildID, userID, command, action)
 	//Commands should always work in dms
 	if guildID == "" {
 		return true
@@ -324,6 +326,7 @@ func (authClient *AuthClient) Authorize(guildID, userID, command, action string)
 		RequestItems: buildAuthorizationKeys(guildID, userID, command, action, roleIDList),
 	},
 		func(page *dynamodb.BatchGetItemOutput, lastPage bool) bool {
+			// fmt.Println(page)
 			for _, permission := range page.Responses[assets.AuthTableName] {
 				rule := &PermissionObject{}
 				dynamodbattribute.UnmarshalMap(permission, rule)
@@ -496,6 +499,7 @@ func parseAuthCommandArgs(discordClient *discordgo.Session, message *discordgo.M
 }
 
 func evaluatePermissions(permissions map[string]bool, command, action string) *bool {
+	fmt.Printf("permissions:%v\n", permissions)
 	var hasPermission *bool
 	commandPermission, cp := permissions[command+"!"]
 	actionPermission, ap := permissions[command+"!"+action]
@@ -538,13 +542,15 @@ func buildAuthorizationKeys(guildID, userID, command, action string, roleIDList 
 		keys = append(keys, buildAuthorizationKey(guildID, userID, role, command, action, true))
 		if action != "" {
 			keys = append(keys, buildAuthorizationKey(guildID, userID, role, command, "", true))
-			keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, "", false))
 		}
 	}
 	//Add key for userID
 	keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, action, false))
-
+	if action != "" {
+		keys = append(keys, buildAuthorizationKey(guildID, userID, "", command, "", false))
+	}
 	keysAndAttributes[assets.AuthTableName].SetKeys(keys[:len(keys)])
+	// fmt.Printf("keys and attributes:%v\n\n", keysAndAttributes)
 	return keysAndAttributes
 }
 
@@ -559,6 +565,7 @@ func buildAuthorizationKey(guildID, userID, roleID, command, action string, isRo
 		Guild:      guildID + "!" + command + "!" + action,
 		Permission: rangeKey,
 	})
+	fmt.Printf("key:%v\n", key)
 	return key
 }
 
