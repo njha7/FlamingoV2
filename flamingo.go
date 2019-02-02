@@ -26,6 +26,7 @@ var (
 	flamingoLogger                                        *log.Logger
 	flamingoErrLogger                                     *log.Logger
 	commandServices                                       []flamingoservice.FlamingoService
+	spoilerService                                        *flamingoservice.SpoilerClient
 )
 
 func init() {
@@ -74,6 +75,7 @@ func main() {
 		Local:           local,
 	}
 	authClient := flamingoservice.NewAuthClient(discord, ddb, metricsClient)
+	spoilerService = flamingoservice.NewSpoilerClient(authClient)
 
 	commandServices = []flamingoservice.FlamingoService{
 		flamingoservice.NewStrikeClient(ddb, metricsClient, authClient),
@@ -114,6 +116,10 @@ func commandListener(session *discordgo.Session, m *discordgo.MessageCreate) {
 				go v.Handle(session, m.Message)
 				return
 			}
+		}
+	} else {
+		if spoilerService.IsCommand(m.Content) {
+			go spoilerService.Handle(session, m.Message)
 		}
 	}
 }
