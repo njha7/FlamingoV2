@@ -1,8 +1,6 @@
 package flamingoservice
 
 import (
-	"FlamingoV2/assets"
-	"FlamingoV2/flamingolog"
 	"log"
 	"strings"
 
@@ -11,6 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/bwmarrin/discordgo"
+	"github.com/njha7/FlamingoV2/assets"
+	"github.com/njha7/FlamingoV2/flamingolog"
 )
 
 const (
