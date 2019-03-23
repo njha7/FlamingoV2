@@ -89,29 +89,6 @@ Retrieves a list of all the copypastas saved in the server and DMs them to the c
 
 Usage: ```~pasta list```
 
-### template
-
-#### get
-Retrieves a template by alias and posts it with a given substitution. Alias can by any alphanumeric string with no whitespace.
-
-Usage: ```~template get $alias $sub```
-
-#### save
-Saves a new a template by alias. Alias can by any alphanumeric string with no whitespace. Must have a %s.
-
-Usage: ```~template save $alias $template```
-
-#### edit
-Updates an existing template by alias. The template must exist and by authored by the caller for this to succeed. New template must also include a %s.
-
-Usage: ```~template save $alias $updated_template_text```
-
-#### list
-Retrieves a list of all the templates saved in the server and DMs them to the caller.
-
-Usage: ```~template list```
-
-
 ### react
 
 #### get

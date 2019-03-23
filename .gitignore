@@ -13,9 +13,3 @@
 
 #Local convenience scripts
 scripts/*
-
-# godep
-vendor/
-
-# goland
-.idea/
