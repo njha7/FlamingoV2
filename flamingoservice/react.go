@@ -1,6 +1,8 @@
 package flamingoservice
 
 import (
+	"FlamingoV2/flamingolog"
+	"FlamingoV2/assets"
 	"bytes"
 	"image"
 	"image/png"
@@ -8,14 +10,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/njha7/FlamingoV2/assets"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
 	"github.com/nfnt/resize"
-	"github.com/njha7/FlamingoV2/flamingolog"
 )
 
 const (

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"FlamingoV2/flamingolog"
+	"FlamingoV2/flamingoservice"
 	"flag"
 	"log"
 	"os"
@@ -16,8 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bwmarrin/discordgo"
-	"github.com/njha7/FlamingoV2/flamingolog"
-	"github.com/njha7/FlamingoV2/flamingoservice"
 )
 
 var (
@@ -80,6 +80,7 @@ func main() {
 	commandServices = []flamingoservice.FlamingoService{
 		flamingoservice.NewStrikeClient(ddb, metricsClient, authClient),
 		flamingoservice.NewPastaClient(ddb, metricsClient, authClient),
+		flamingoservice.NewTemplateClient(ddb, metricsClient, authClient),
 		flamingoservice.NewReactClient(s3, metricsClient, authClient),
 		authClient,
 	}
