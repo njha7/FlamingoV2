@@ -80,7 +80,9 @@ func (templateClient *TemplateClient) Handle(session *discordgo.Session, message
 			if err != nil {
 				session.ChannelMessageSend(message.ChannelID, "Template retrieval failed, please try later!")
 				templateClient.TemplateErrorLogger.Println(err)
+				return
 			}
+			return
 		}
 
 		if templateClient.AuthClient.Authorize(message.GuildID, message.Author.ID, templateCommand, "get") {
