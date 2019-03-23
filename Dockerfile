@@ -1,9 +1,16 @@
 FROM golang:1.11
 
-WORKDIR /go/src/app
+WORKDIR /go/src/FlamingoV2
 COPY . .
+RUN go get github.com/tools/godep
+RUN godep restore
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app .
 
-RUN go get -d -v ./...
-RUN go install -v ./...
-
-CMD /go/bin/app
+FROM alpine:latest
+WORKDIR /root/
+COPY --from=0 /go/src/FlamingoV2/app .
+RUN apk update \
+    && apk add ca-certificates \
+    && update-ca-certificates \
+    && apk add openssl
+CMD ["./app"]
