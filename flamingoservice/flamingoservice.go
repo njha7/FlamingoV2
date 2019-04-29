@@ -13,6 +13,7 @@ var (
 	// Commands is the source of truth for all available commands and command actions
 	Commands = map[string][]string{
 		"strike": {"", "super", "get", "clear", "help"},
+		"stroke": {"", "status", "super", "get", "clear", "help"},
 		"pasta":  {"get", "save", "edit", "list", "help"},
 		"template":  {"get", "save", "edit", "list", "help"},
 		"react":  {"get", "save", "delete", "list", "help"},
