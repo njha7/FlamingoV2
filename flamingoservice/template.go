@@ -356,7 +356,7 @@ func (templateClient *TemplateClient) GetTemplate(guildID, alias, sub string) (s
 
 	template, ok := result.Item["template"]
 	if ok {
-		return fmt.Sprintf(*template.S, sub), nil
+		return strings.Replace(*template.S, "%s", sub, -1), nil
 	}
 
 	return fmt.Sprintf("No template with alias %s found", alias), nil
