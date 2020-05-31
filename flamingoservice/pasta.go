@@ -16,6 +16,8 @@ import (
 const (
 	pastaServiceName = "Pasta"
 	pastaCommand     = "pasta"
+	ultimateBeta     = "461026897724178432"
+	ultimateAlpha    = "685250545191223300"
 )
 
 // PastaClient is responsible for handling "pasta" commands
@@ -64,6 +66,10 @@ func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *disc
 	if len(args) < 1 {
 		pastaClient.Help(session, message.ChannelID)
 		return
+	}
+	//server migration hack
+	if message.GuildID == ultimateBeta {
+		message.GuildID = ultimateAlpha
 	}
 	//sub-commands of pasta
 	switch args[0] {

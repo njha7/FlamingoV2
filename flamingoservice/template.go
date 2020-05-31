@@ -61,7 +61,10 @@ func (templateClient *TemplateClient) Handle(session *discordgo.Session, message
 		templateClient.Help(session, message.ChannelID)
 		return
 	}
-
+	//server migration hack
+	if message.GuildID == ultimateBeta {
+		message.GuildID = ultimateAlpha
+	}
 	switch args[0] {
 	case "get":
 		// 1 value means they only passed us ~template get
