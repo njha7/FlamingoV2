@@ -68,8 +68,8 @@ func (pastaClient *PastaClient) Handle(session *discordgo.Session, message *disc
 		return
 	}
 	//server migration hack
-	if message.GuildID == ultimateBeta {
-		message.GuildID = ultimateAlpha
+	if message.GuildID == ultimateAlpha {
+		message.GuildID = ultimateBeta
 	}
 	//sub-commands of pasta
 	switch args[0] {
