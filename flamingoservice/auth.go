@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log"
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -73,77 +72,8 @@ func (authClient *AuthClient) IsCommand(message string) bool {
 
 // Handle parses a command message and performs the commanded action
 func (authClient *AuthClient) Handle(session *discordgo.Session, message *discordgo.Message) {
-	//first word is always "auth", safe to remove
-	args := strings.SplitN(message.Content, " ", 3)[1:]
-	if len(args) < 1 {
-		authClient.Help(session, message.ChannelID)
-		return
-	}
-	//sub-commands of auth
-	switch args[0] {
-	case "set":
-		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "set") {
-			var err error
-			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, isAllowed := parseAuthCommandArgs(session, message)
-			if !validatePermissionID(userPermission, roleIDPermission) {
-				ParseServiceResponse(session, message.ChannelID, "Please specify a user or a role!", nil)
-				return
-			}
-			if isRole {
-				err = authClient.SetPermission(message.GuildID, message.MentionRoles[0], commandPermission, actionPermission, isRole, isAllowed)
-			} else {
-				err = authClient.SetPermission(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission, isRole, isAllowed)
-			}
-			ParseServiceResponse(session, message.ChannelID, "Auth rule added successfully", err)
-		} else {
-			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
-		}
-	case "delete":
-		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "delete") {
-			var err error
-			commandPermission, actionPermission, userPermission, roleIDPermission, isRole, _ := parseAuthCommandArgs(session, message)
-			if !validatePermissionID(userPermission, roleIDPermission) {
-				ParseServiceResponse(session, message.ChannelID, "Please specify a user or a role!", nil)
-				return
-			}
-			if isRole {
-				err = authClient.DeletePermission(message.GuildID, message.MentionRoles[0], commandPermission, actionPermission, isRole)
-			} else {
-				err = authClient.DeletePermission(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission, isRole)
-			}
-			ParseServiceResponse(session, message.ChannelID, "Auth rule removed successfully", err)
-		} else {
-			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
-		}
-	case "test":
-		commandPermission, actionPermission, userPermission, _, _, _ := parseAuthCommandArgs(session, message)
-		if !validatePermissionID(userPermission, userPermission) {
-			ParseServiceResponse(session, message.ChannelID, "Please specify a user!", nil)
-			return
-		}
-		testMessage := "Unauthorized"
-		result := authClient.Authorize(message.GuildID, message.Mentions[0].ID, commandPermission, actionPermission)
-		if result {
-			testMessage = "Authorized"
-		}
-		ParseServiceResponse(session, message.ChannelID, testMessage, nil)
-	case "permissive":
-		if authClient.Authorize(message.GuildID, message.Author.ID, authCommand, "permissive") {
-			_, _, _, _, _, isAllowed := parseAuthCommandArgs(session, message)
-			err := authClient.SetPermissiveFlagValue(message.GuildID, isAllowed)
-			ParseServiceResponse(session, message.ChannelID, "Permissive flag value updated.", err)
-		} else {
-			ParseServiceResponse(session, message.ChannelID, "<@"+message.Author.ID+"> is unauthorized to issue that command!", nil)
-		}
-	case "list":
-		ParseServiceResponse(session, message.ChannelID, "Coming soon!", nil)
-		// err := authClient.ListPermissions(message.GuildID, message.ChannelID, message.Author.ID)
-		// if err != nil {
-		// 	ParseServiceResponse(session, message.ChannelID, "", err)
-		// }
-	case "help":
-		authClient.Help(session, message.ChannelID)
-	}
+	// hack to deprecate this functionality
+	ParseServiceResponse(session, message.ChannelID, "This command is deprecated.", nil)
 }
 
 // ListPermissions lists all permissions for a guild
@@ -268,101 +198,7 @@ func (authClient *AuthClient) DeletePermission(guildID, ID, command, action stri
 //Authorize determines a user's eligibility to invoke a command
 // returns true if authorized, false otherwise
 func (authClient *AuthClient) Authorize(guildID, userID, command, action string) bool {
-	//Commands should always work in dms
-	if guildID == "" {
-		return true
-	}
-	//Check permissive flag value
-	permissiveFlagValue, err := authClient.GetPermissiveFlagValue(guildID)
-	if err != nil {
-		authClient.AuthErrorLogger.Println(err)
-		return false
-	}
-
-	member, err := authClient.DiscordClient.GuildMember(guildID, userID)
-	if err != nil {
-		authClient.AuthErrorLogger.Println(err)
-		return false
-	}
-	roleIDList := member.Roles
-
-	guildRoles, err := authClient.DiscordClient.GuildRoles(guildID)
-	if err != nil {
-		authClient.AuthErrorLogger.Println(err)
-		return false
-	}
-	//Track which roles a member has
-	memberRoleSet := make(map[string]bool)
-	//Track positions of roles
-	rolePositionMap := make(map[int]string)
-
-	for _, role := range roleIDList {
-		memberRoleSet[role] = true
-	}
-	for _, role := range guildRoles {
-		_, ok := memberRoleSet[role.ID]
-		//Only populate position role map for roles that user has
-		if ok {
-			rolePositionMap[role.Position] = role.ID
-		}
-	}
-
-	rolePositions := make([]int, 10)
-	for position := range rolePositionMap {
-		rolePositions = append(rolePositions, position)
-	}
-	//Sorted list of roles (asc)
-	sort.Ints(rolePositions)
-
-	rolePermissions := make(map[string]map[string]bool)
-	userPermissions := make(map[string]bool)
-
-	authClient.DynamoClient.BatchGetItemPages(&dynamodb.BatchGetItemInput{
-		RequestItems: buildAuthorizationKeys(guildID, userID, command, action, roleIDList),
-	},
-		func(page *dynamodb.BatchGetItemOutput, lastPage bool) bool {
-			for _, permission := range page.Responses[assets.AuthTableName] {
-				rule := &PermissionObject{}
-				dynamodbattribute.UnmarshalMap(permission, rule)
-				//Role-based rules
-				if strings.HasPrefix(rule.Permission, "role!") {
-					//guild, command ! action
-					ruleArgs := strings.SplitN(rule.Guild, "!", 2)
-					roleID := strings.Split(rule.Permission, "!")[1]
-					//populate role permissions
-					_, ok := rolePermissions[roleID]
-					if !ok {
-						rolePermissions[roleID] = make(map[string]bool)
-					}
-					rolePermissions[roleID][ruleArgs[1]] = rule.Allow
-				} else {
-					//User-based rules
-					//guild, command ! action
-					ruleArgs := strings.SplitN(rule.Guild, "!", 2)
-					//populate user permissions
-					userPermissions[ruleArgs[1]] = rule.Allow
-				}
-			}
-			return !lastPage
-		})
-	//Do short circuit check
-	if len(rolePermissions) == 0 && len(userPermissions) == 0 {
-		//auth command requires explicit permission to execute
-		return permissiveFlagValue && command != "auth"
-	}
-	//Evaluate user permissions
-	userPerm := evaluatePermissions(userPermissions, command, action)
-	if userPerm != nil {
-		return *userPerm
-	}
-	for i := len(rolePositions) - 1; i > 0; i-- {
-		rolePerm, ok := rolePermissions[rolePositionMap[rolePositions[i]]]
-		if ok {
-			//Impossible for this to be nil, will return T or F
-			return *evaluatePermissions(rolePerm, command, action)
-		}
-	}
-	return false
+	return true
 }
 
 // GetPermissiveFlagValue checks for the value of the permissive flag for a guild.
