@@ -79,6 +79,7 @@ func main() {
 
 	commandServices = []flamingoservice.FlamingoService{
 		flamingoservice.NewStrikeClient(ddb, metricsClient, authClient),
+		flamingoservice.NewStrokeClient(ddb, metricsClient, authClient),
 		flamingoservice.NewPastaClient(ddb, metricsClient, authClient),
 		flamingoservice.NewTemplateClient(ddb, metricsClient, authClient),
 		flamingoservice.NewReactClient(s3, metricsClient, authClient),
